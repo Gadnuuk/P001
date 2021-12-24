@@ -59,14 +59,26 @@ AP001Character::AP001Character(const class FObjectInitializer& ObjectInitializer
 	// traversal options set
 	GetTraversalMovementComponent()->ActionPointDetectionCollision = ActionPointCollision;
 	GetTraversalMovementComponent()->bCanEverRaiseLegs = true;
+
+	GetTraversalMovementComponent()->ClimbStartSettings.PlayerOffsetFromWall = FVector(28.169436f, 0.f, -86.333076f);
 	GetTraversalMovementComponent()->ClimbStartSettings.MaxDistanceThreshold = 200.f;
 	GetTraversalMovementComponent()->ClimbStartSettings.MaxDotThreshold = 0.5f;
 	GetTraversalMovementComponent()->ClimbStartSettings.MaxHeightThreshold = 75.0f;
 	GetTraversalMovementComponent()->ClimbStartSettings.MinHeightThreshold = -50.0f;
 	GetTraversalMovementComponent()->ClimbStartSettings.FallingHeightScalar = 1.5f;
 	GetTraversalMovementComponent()->ClimbStartSettings.LateralThreshold = 100.f;
-	GetTraversalMovementComponent()->PlayerOffsetFromWall = FVector(50.f, 0, -50.f);
-
+	GetTraversalMovementComponent()->ClimbStartSettings.MaxDistanceScalar = 1.5f;
+	
+	GetTraversalMovementComponent()->ClimbTransitionSettings.PlayerOffsetFromWall = FVector(50.f, 0, -50.f);
+	GetTraversalMovementComponent()->ClimbTransitionSettings.MaxDistanceThreshold = 200.f;
+	GetTraversalMovementComponent()->ClimbTransitionSettings.MinDistanceThreshold = GetCapsuleComponent()->GetScaledCapsuleRadius();
+	GetTraversalMovementComponent()->ClimbTransitionSettings.MaxDotThreshold = 0.5f;
+	GetTraversalMovementComponent()->ClimbTransitionSettings.MaxHeightThreshold = 75.0f;
+	GetTraversalMovementComponent()->ClimbTransitionSettings.MinHeightThreshold = -50.0f;
+	GetTraversalMovementComponent()->ClimbTransitionSettings.FallingHeightScalar = 1.5f;
+	GetTraversalMovementComponent()->ClimbTransitionSettings.LateralThreshold = 100.f;
+	GetTraversalMovementComponent()->ClimbTransitionSettings.WallStepDepth = 30.f;
+	GetTraversalMovementComponent()->ClimbTransitionSettings.MaxDistanceScalar = 1.5f;
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named MyCharacter (to avoid direct content references in C++)
@@ -128,6 +140,11 @@ void AP001Character::MoveForward(float Value)
 		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
 		AddMovementInput(Direction, Value);
 	}
+	else if ((Controller != nullptr))
+	{
+		// apply move vector to traversal move component
+		GetTraversalMovementComponent()->AddClimbVerticalInput(Value);
+	}
 }
 
 void AP001Character::MoveRight(float Value)
@@ -142,5 +159,11 @@ void AP001Character::MoveRight(float Value)
 		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 		// add movement in that direction
 		AddMovementInput(Direction, Value);
+
+	}
+	else if((Controller != nullptr))
+	{
+		// apply move vector to traversal move component
+		GetTraversalMovementComponent()->AddClimbHorizontalInput(Value);
 	}
 }

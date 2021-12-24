@@ -32,18 +32,6 @@ void UTraversalMovementComponent::BeginPlay()
 		InitActionPointDetection();
 	}
 
-	// find all action point components and cache them
-	TArray<AActor*> FoundActors;
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ActionPointActorClass, FoundActors);
-	for(AActor* Actor : FoundActors)
-	{
-		auto ActionComponents = Actor->GetComponentsByClass(UActionPointComponent::StaticClass());
-		for(auto Comp : ActionComponents)
-		{
-			AllActionPoints.Add(Cast<UActionPointComponent>(Comp));
-		}
-	}
-
 	// tell the arrow component to show, this is usfull for displaying the characters center mass.
 	CharacterOwner->GetArrowComponent()->SetHiddenInGame(!bShowArrow);
 
@@ -155,8 +143,11 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 	if(bIsClimbing)
 	{
 		if(CurrentActionPoint != nullptr && !bIsTransitioning)
-		{
-			// dont glue the player to a point if they are in transition
+		{	
+			// use start settings here because it denotes our idle
+			FVector PlayerOffsetFromWall = ClimbStartSettings.PlayerOffsetFromWall;
+
+			// glue the player to the current point
 			FVector PlayerOffset = CurrentActionPoint->GetForwardVector() * PlayerOffsetFromWall.X 
 								 + CurrentActionPoint->GetRightVector() * PlayerOffsetFromWall.Y
 								 + CurrentActionPoint->GetUpVector() * PlayerOffsetFromWall.Z;
@@ -166,6 +157,49 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 
 			CharacterOwner->SetActorLocation(TargetLocation);
 			CharacterOwner->SetActorRotation(TargetRotation);
+
+			// look for the next location the player can move to
+			if(Horizontal != 0 || Vertical != 0)
+			{
+				//search radius should scale down with input - useful for joystick
+				float MaxSearchRadius = FMath::Clamp(ClimbTransitionSettings.MaxDistanceThreshold * FVector2D(Horizontal, Vertical).Size(),
+										0.f, ClimbTransitionSettings.MaxDistanceThreshold);
+				FVector InputVector = (CharacterOwner->GetActorRightVector() * Horizontal
+									+ CharacterOwner->GetActorUpVector() * Vertical)
+									.GetSafeNormal();
+				FVector Start = CharacterOwner->GetActorLocation() + (CharacterOwner->GetActorForwardVector() * -ClimbTransitionSettings.WallStepDepth);
+				FVector End = (InputVector * MaxSearchRadius) + Start;
+
+				// sweep for collision in the shape of our capsule to see if we need to adjust where we are looking
+				FHitResult HitResult;
+				TArray<AActor*> ActorsToIgnore;
+				ActorsToIgnore.Add(CharacterOwner);
+				for (auto Actor : ActionPointsInClimbableSpace)
+				{
+					ActorsToIgnore.Add(Actor->GetOwner());
+				}
+				
+
+				if(UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
+					Start, End,
+					CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius(),
+					CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight(),
+					ETraceTypeQuery::TraceTypeQuery1,
+					true,
+					ActorsToIgnore,
+					EDrawDebugTrace::Type::ForDuration,
+					HitResult,
+					true,
+					FLinearColor::Green, FLinearColor::Red, 0.1f
+				))
+				{
+					MaxSearchRadius = FVector::Distance(Start, HitResult.Location);
+				}
+
+				//DrawDebugLine(GetWorld(), Start, End, FColor::Red);
+				//DRAW_SPHERE_BLUE(Start, MaxSearchRadius, -1.0);
+				DrawDebugCylinder(GetWorld(), Start, Start + -CharacterOwner->GetActorForwardVector() * ClimbTransitionSettings.WallStepDepth, MaxSearchRadius, 30, FColor::Blue, false, -1.0f, (uint8)0U, 10);
+			}
 		}
 	}
 	else
@@ -183,13 +217,15 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 			// draw top line
 			FVector Start = CharacterOwner->GetActorLocation() + FVector(0.f, 0.f, FMath::Clamp(ClimbStartSettings.MaxHeightThreshold + Vel.Z, ClimbStartSettings.MaxHeightThreshold,  std::numeric_limits<float>::max()));
 			FVector End = (Start + CharacterOwner->GetActorForwardVector() * 100);
+			DrawDebugLine(GetWorld(), Start, End, FColor::Red);
 
 			CurrentMaxHeightToClimb = Start.Z;
 
 			// draw bottom line
 			Start = CharacterOwner->GetActorLocation() + FVector(0.f, 0.f, ClimbStartSettings.MinHeightThreshold + Vel.Z);
 			End = (Start + CharacterOwner->GetActorForwardVector() * 100);
-			
+			DrawDebugLine(GetWorld(), Start, End, FColor::Red);
+
 			CurrentMinHeightToClimb = Start.Z;
 		}
 		else
@@ -200,7 +236,6 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 			Start = CharacterOwner->GetActorLocation() + FVector(0.f, 0.f, ClimbStartSettings.MinHeightThreshold);
 			End = Start + CharacterOwner->GetActorForwardVector() * 100;
 		}
-
 	}
 }
 
@@ -264,11 +299,14 @@ void UTraversalMovementComponent::RaiseLegs()
 	const float OldUnscaledRadius = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
 
 	// Height is not allowed to be smaller than radius.
-	const float ClampedCrouchedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, LegRaiseHalfHeight);
-	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedCrouchedHalfHeight);
+	const float ClampedRaisedLegsHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, LegRaiseHalfHeight);
+	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedRaisedLegsHalfHeight);
+
+	RaiseLegsCapsuleHalfHeight = OldUnscaledRadius;
+	RaiseLegsCapsuleRadius = ClampedRaisedLegsHalfHeight;
 
 	// move skeletal mesh down
-	float HalfHeightAdjust = (OldUnscaledHalfHeight - ClampedCrouchedHalfHeight);
+	float HalfHeightAdjust = (OldUnscaledHalfHeight - ClampedRaisedLegsHalfHeight);
 	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
 
 	FVector CurrentLoc = CharacterOwner->GetMesh()->GetRelativeLocation();
@@ -311,7 +349,7 @@ void UTraversalMovementComponent::StartClimbing()
 {
 	UActionPointComponent* TargetActionPoint = nullptr;
 	float BestDistanceToPoint = 0.0f;
-	float BestDotToPoint = 0.0f;
+	float BestLatDistToPoint = 0.0f;
 
 	// attempt to mount to an action point
 	for(auto ActionPoint : ActionPointsInClimbableSpace)
@@ -331,31 +369,43 @@ void UTraversalMovementComponent::StartClimbing()
 
 		float LateralDistance = ((PointLoc - CharacterLoc).ProjectOnTo(CharacterOwner->GetActorRightVector())).Size();
 
+		// check the distance plus the players velocity		
+		float DistanceScale = FMath::Clamp(
+			FVector(CharacterOwner->GetVelocity().X, CharacterOwner->GetVelocity().Y, 0.f).Size() * GetWorld()->GetDeltaSeconds(),
+			0.f, 
+			ClimbStartSettings.MaxDistanceScalar);
+		float DistanceToCheck = FMath::Clamp(ClimbStartSettings.MaxDistanceThreshold * DistanceScale, ClimbStartSettings.MaxDistanceThreshold, std::numeric_limits<float>::max()) ;
+		DEBUG_SCREEN_LOG("DISTANCE TO CHECK: %f", 10, DistanceToCheck);
+
 		bool bIsCandidate = !ActionPoint->GetIsBusy() 
-							&& DistanceToPoint <= ClimbStartSettings.MaxDistanceThreshold 
-							//&& DotToPoint >= ClimbStartSettings.MaxDotThreshold 
+							&& DistanceToPoint <= DistanceToCheck
 							&& PointLoc.Z <= CurrentMaxHeightToClimb 
 							&& PointLoc.Z >= CurrentMinHeightToClimb
 							&& LateralDistance <= ClimbStartSettings.LateralThreshold * 0.5f;
 
 		if(bIsCandidate)
 		{
-			bool bIsBetter = (DistanceToPoint <= BestDistanceToPoint) && (DotToPoint < BestDotToPoint);
+			bool bIsBetter = (DistanceToPoint <= BestDistanceToPoint) && (LateralDistance < BestLatDistToPoint);
 
 			if(TargetActionPoint == nullptr || bIsBetter)
 			{
 				TargetActionPoint = ActionPoint;
 				BestDistanceToPoint = DistanceToPoint;
-				BestDotToPoint = DotToPoint;
+				BestLatDistToPoint = LateralDistance;
 				continue;
 			}
 		}
 		else
 		{
 #if WITH_EDITOR
-			DEBUG_SCREEN_ERROR("Failed To Start Climb......", 10);
-			DEBUG_SCREEN_ERROR("Distance To Point: %f", 10, DistanceToPoint);
-			DEBUG_SCREEN_ERROR("Dot To Point: %f", 10, DotToPoint);
+			//DEBUG_SCREEN_ERROR("Failed To Start Climb......", 10);
+			//DEBUG_SCREEN_ERROR("Distance To Point: %f", 10, DistanceToPoint);
+			//DEBUG_SCREEN_ERROR("Height To Point: %f", 10, PointLoc.Z);
+			//DEBUG_SCREEN_ERROR("Currrent Max Height: %f", 10, CurrentMaxHeightToClimb);
+			//DEBUG_SCREEN_ERROR("Currrent Min Height: %f", 10, CurrentMinHeightToClimb);
+			//DEBUG_SCREEN_ERROR("Lateral Distance of Point: %f", 10, LateralDistance);
+
+			//DrawDebugLine(GetWorld(), CharacterOwner->GetActorLocation(), CharacterOwner->GetActorLocation() + CharacterOwner->GetActorRightVector() * LateralDistance, FColor::Red, true);
 #endif // WITH_EDITOR
 		}
 	}
@@ -399,7 +449,7 @@ bool UTraversalMovementComponent::SweepForGround(FVector& SweepVelocity) const
 
 	TArray<AActor*> ActorsToIgnore;
 	ActorsToIgnore.Add(CharacterOwner);
-	for(auto Actor : AllActionPoints)
+	for(auto Actor : ActionPointsInClimbableSpace)
 	{
 		ActorsToIgnore.Add(Actor->GetOwner());
 	}
@@ -456,4 +506,14 @@ bool UTraversalMovementComponent::InitActionPointDetection()
 	}
 
 	return false;
+}
+
+void UTraversalMovementComponent::AddClimbHorizontalInput(float NewHorizontal)
+{
+	Horizontal = NewHorizontal;
+}
+
+void UTraversalMovementComponent::AddClimbVerticalInput(float NewVertical)
+{
+	Vertical = NewVertical;
 }

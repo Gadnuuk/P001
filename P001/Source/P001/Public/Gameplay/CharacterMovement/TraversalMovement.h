@@ -17,6 +17,9 @@ struct FTraverseSettings
 	float MaxDistanceThreshold;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinDistanceThreshold;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxDotThreshold;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -30,6 +33,16 @@ struct FTraverseSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float FallingHeightScalar;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector PlayerOffsetFromWall;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float WallStepDepth;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxDistanceScalar;
+
 };
 
 UENUM(BlueprintType)

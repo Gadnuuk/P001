@@ -44,9 +44,9 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climbing")
 	FTraverseSettings ClimbStartSettings;
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climbing")
-	FVector PlayerOffsetFromWall;
+	FTraverseSettings ClimbTransitionSettings;
 
 	UPROPERTY(BlueprintReadWrite)
 	class USphereComponent* ActionPointDetectionCollision;
@@ -82,6 +82,12 @@ public:
 	UFUNCTION(BlueprintCallable)
 	bool InitActionPointDetection();
 
+	UFUNCTION(BlueprintCallable)
+	void AddClimbHorizontalInput(float NewHorizontal);
+	
+	UFUNCTION(BlueprintCallable)
+	void AddClimbVerticalInput(float NewVertical);
+
 protected:
 	UPROPERTY()
 	TArray<FMatchTargetData> MatchTargets;
@@ -89,14 +95,17 @@ protected:
 	UPROPERTY()
 	UAnimInstance* AnimInstance;
 
-	UPROPERTY()
-	TArray<UActionPointComponent*> AllActionPoints;
-	
 	UPROPERTY(BlueprintReadOnly)
 	TArray<UActionPointComponent*> ActionPointsInClimbableSpace;
 	
 	UPROPERTY(BlueprintReadOnly)
 	UActionPointComponent* CurrentActionPoint;
+
+	UPROPERTY(BlueprintReadWrite)
+	float Horizontal;
+	
+	UPROPERTY(BlueprintReadWrite)
+	float Vertical;
 
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -133,6 +142,9 @@ private:
 	
 	float DefaultCapsuleHalfHeightScaled;
 	float DefaultCapsuleRadiusScaled;
+
+	float RaiseLegsCapsuleHalfHeight;
+	float RaiseLegsCapsuleRadius;
 	
 	FVector DefaultSkeletalMeshLocation;
 };
