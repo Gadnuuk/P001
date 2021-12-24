@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "TraversalMovement.h"
+
 #include "CoreMinimal.h"
 #include "Components/SphereComponent.h"
 #include "ActionPointComponent.generated.h"
@@ -9,21 +11,29 @@
 /**
  * 
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, Blueprintable, meta = (BlueprintSpawnableComponent))
 class P001_API UActionPointComponent : public USphereComponent
 {
 	GENERATED_BODY()
 	
+public:
 	UActionPointComponent();
 
+	UFUNCTION(BlueprintPure)
+	TEnumAsByte<EActionPointType> GetActionPointType() {return ActionPointType;}
+
+	UFUNCTION(BlueprintPure)
+	bool GetIsBusy(){return bIsBusy;}
+	
+	UFUNCTION(BlueprintCallable)
+	void SetIsBusy(bool bValue){bIsBusy = bValue;}
+
 protected:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TEnumAsByte<EActionPointType> ActionPointType;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	bool bIsBusy;
+
 	virtual void BeginPlay() override;
-
-	void OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, 
-	AActor* OtherActor, 
-	UPrimitiveComponent* OtherComp, 
-	int32 OtherBodyIndex, 
-	bool bFromSweep, 
-	const FHitResult& SweepResult);
-
 };

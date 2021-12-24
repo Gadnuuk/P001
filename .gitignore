@@ -50,7 +50,7 @@ P001/Binaries/*
 P001/Plugins/*/Binaries/*
 
 # Builds
-Build/*
+P001/Build/*
 
 # Whitelist PakBlacklist-<BuildConfiguration>.txt files
 !Build/*/
@@ -71,4 +71,4 @@ P001/Intermediate/*
 P001/Plugins/*/Intermediate/*
 
 # Cache files for the editor to use
-DerivedDataCache/*
+P001/DerivedDataCache/*

@@ -5,35 +5,47 @@
 #include "Public/Gameplay/CharacterMovement/ActionPointComponent.h"
 #include "P001.h"
 
+// used for a float limit
+#include <limits>
+
 #include "GameFramework/Character.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 
+UTraversalMovementComponent::UTraversalMovementComponent()
+{
+	LegRaiseHalfHeight = 50.f;
+}
+
 void UTraversalMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// find all action point components
+	if(ActionPointDetectionCollision == nullptr)
+	{
+		DEBUG_SCREEN_ERROR("Please Assign a sphere component to the Traversal Movement Component to use it...", 10);
+	}
+	else
+	{
+		InitActionPointDetection();
+	}
+
+	// find all action point components and cache them
 	TArray<AActor*> FoundActors;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ActionPointActorClass, FoundActors);
 	for(AActor* Actor : FoundActors)
 	{
-		auto ActionComponents = Actor->GetComponentsByClass(ActionPointComponentClass);
+		auto ActionComponents = Actor->GetComponentsByClass(UActionPointComponent::StaticClass());
 		for(auto Comp : ActionComponents)
 		{
-			ActionPoints.Add(Cast<USceneComponent>(Comp));
+			AllActionPoints.Add(Cast<UActionPointComponent>(Comp));
 		}
 	}
 
-
-	CameraBoom = Cast<USpringArmComponent>(CharacterOwner->GetComponentByClass(USpringArmComponent::StaticClass()));
-
-	if(CameraBoom != nullptr)
-	{
-		DefaultCameraBoomLocation = CameraBoom->GetRelativeLocation();
-	}
+	// tell the arrow component to show, this is usfull for displaying the characters center mass.
+	CharacterOwner->GetArrowComponent()->SetHiddenInGame(!bShowArrow);
 
 	DefaultCapsuleHalfHeightUnscaled = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 	DefaultCapsuleRadiusUnscaled = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
@@ -50,11 +62,12 @@ void UTraversalMovementComponent::TickComponent(float DeltaTime, enum ELevelTick
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction );
 
 	TickMatchTarget(DeltaTime);
+	TickClimbPosition(DeltaTime);
 
 	// if we are in the walk state
 	{
 		// handle the players orientation
-		if(IsFalling() && bOrientRotationToMovement)
+		if( (IsFalling()|| bIsClimbing) && bOrientRotationToMovement)
 		{
 			// dont rotate with intput
 			bOrientRotationToMovement = false;
@@ -71,7 +84,7 @@ FVector UTraversalMovementComponent::ConstrainAnimRootMotionVelocity(const FVect
 {
 	FVector Result = Super::ConstrainAnimRootMotionVelocity(RootMotionVelocity, CurrentVelocity);
 
-	SweepForGround(Result);
+	//SweepForGround(Result);
 
 	return Result;
 }
@@ -104,23 +117,7 @@ void UTraversalMovementComponent::TickMatchTarget(float DeltaTime)
 
 				TargetLocation = FMath::Lerp(CharacterLocation, TargetLocation - Offset, LerpAmount);
 
-				// ensure we arent dropping the players capsule below the ground
-				//if(SweepForGround(TargetLocation/*, Data*/))
-				//{
-				//	DEBUG_SCREEN_LOG("Attempted to enter the ground...", 1);
-				//}
-
 				CharacterOwner->SetActorLocation(TargetLocation);
-			
-				// make sure we are controlling the characters collision
-				if(!CharacterOwner->bIsCrouched && Data.bCrouch)
-				{
-					CharacterOwner->Crouch();
-				}
-				if(!bHasLegsRaised && Data.bRaiseLegs)
-				{
-					RaiseLegs();
-				}
 			}
 		}
 		else
@@ -132,25 +129,114 @@ void UTraversalMovementComponent::TickMatchTarget(float DeltaTime)
 	for(FMatchTargetData& Data : DataToRemove)
 	{
 		MatchTargets.Remove(Data);
-
-		if(Data.bCrouch)
-		{
-			CharacterOwner->UnCrouch();
-		}
-
-		if(Data.bRaiseLegs)
-		{
-			DropLegs();
-		}
 	}
 }
 
+
+void UTraversalMovementComponent::SetCurrentActionPoint(UActionPointComponent* NewActionPoint)
+{
+	// allow nullptr to be passed here to allow for clean up
+
+	if(CurrentActionPoint != nullptr)
+	{
+		CurrentActionPoint->SetIsBusy(false);
+	}
+
+	CurrentActionPoint = NewActionPoint;
+	if(CurrentActionPoint != nullptr)
+	{
+		CurrentActionPoint->SetIsBusy(true);
+	}
+}
+
+void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
+{
+	// move the player to the current point
+	if(bIsClimbing)
+	{
+		if(CurrentActionPoint != nullptr && !bIsTransitioning)
+		{
+			// dont glue the player to a point if they are in transition
+			FVector PlayerOffset = CurrentActionPoint->GetForwardVector() * PlayerOffsetFromWall.X 
+								 + CurrentActionPoint->GetRightVector() * PlayerOffsetFromWall.Y
+								 + CurrentActionPoint->GetUpVector() * PlayerOffsetFromWall.Z;
+
+			FVector TargetLocation = CurrentActionPoint->GetComponentLocation() + PlayerOffset;
+			FQuat TargetRotation = (-CurrentActionPoint->GetForwardVector()).ToOrientationQuat();
+
+			CharacterOwner->SetActorLocation(TargetLocation);
+			CharacterOwner->SetActorRotation(TargetRotation);
+		}
+	}
+	else
+	{
+		if(IsFalling())
+		{
+			FVector Vel = CharacterOwner->GetVelocity() * DeltaTime * ClimbStartSettings.FallingHeightScalar;
+
+			FVector TopVel = Vel;
+			if(TopVel.Z < 0)
+			{
+				TopVel *= 2.;
+			}
+
+			// draw top line
+			FVector Start = CharacterOwner->GetActorLocation() + FVector(0.f, 0.f, FMath::Clamp(ClimbStartSettings.MaxHeightThreshold + Vel.Z, ClimbStartSettings.MaxHeightThreshold,  std::numeric_limits<float>::max()));
+			FVector End = (Start + CharacterOwner->GetActorForwardVector() * 100);
+
+			CurrentMaxHeightToClimb = Start.Z;
+
+			// draw bottom line
+			Start = CharacterOwner->GetActorLocation() + FVector(0.f, 0.f, ClimbStartSettings.MinHeightThreshold + Vel.Z);
+			End = (Start + CharacterOwner->GetActorForwardVector() * 100);
+			
+			CurrentMinHeightToClimb = Start.Z;
+		}
+		else
+		{
+			FVector Start = CharacterOwner->GetActorLocation() + FVector(0.f, 0.f, ClimbStartSettings.MaxHeightThreshold);
+			FVector End = Start + CharacterOwner->GetActorForwardVector() * 100;
+		
+			Start = CharacterOwner->GetActorLocation() + FVector(0.f, 0.f, ClimbStartSettings.MinHeightThreshold);
+			End = Start + CharacterOwner->GetActorForwardVector() * 100;
+		}
+
+	}
+}
+
+void UTraversalMovementComponent::OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	auto PossibleActionPoint = Cast<UActionPointComponent>(OtherComp);
+	if(PossibleActionPoint != nullptr)
+	{
+		ActionPointsInClimbableSpace.AddUnique(PossibleActionPoint);
+	}
+}	
+
+void UTraversalMovementComponent::OnEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	auto PossibleActionPoint = Cast<UActionPointComponent>(OtherComp);
+	if (PossibleActionPoint != nullptr && ActionPointsInClimbableSpace.Contains(PossibleActionPoint))
+	{
+		if(CurrentActionPoint == PossibleActionPoint)
+		{
+			StopClimbing();
+		}
+
+		ActionPointsInClimbableSpace.Remove(PossibleActionPoint);
+	}
+}
 
 void UTraversalMovementComponent::Jump()
 {	
 	if(IsFalling())
 	{
 		return;
+	}
+	
+	if(GetIsClimbing())
+	{
+		StopClimbing();
 	}
 
 	InitJumpEvent.Broadcast();
@@ -178,7 +264,7 @@ void UTraversalMovementComponent::RaiseLegs()
 	const float OldUnscaledRadius = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
 
 	// Height is not allowed to be smaller than radius.
-	const float ClampedCrouchedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, CrouchedHalfHeight);
+	const float ClampedCrouchedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, LegRaiseHalfHeight);
 	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedCrouchedHalfHeight);
 
 	// move skeletal mesh down
@@ -186,15 +272,6 @@ void UTraversalMovementComponent::RaiseLegs()
 	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
 
 	FVector CurrentLoc = CharacterOwner->GetMesh()->GetRelativeLocation();
-	CharacterOwner->GetMesh()->SetRelativeLocation(CurrentLoc + FVector(0.f, 0.f, -ScaledHalfHeightAdjust));
-	
-	CharacterOwner->GetCapsuleComponent()->MoveComponent(
-		FVector(0.f, 0.f, ScaledHalfHeightAdjust),
-		UpdatedComponent->GetComponentQuat(),
-		true,
-		nullptr,
-		EMoveComponentFlags::MOVECOMP_NoFlags,
-		ETeleportType::TeleportPhysics);
 
 	bHasLegsRaised = true;
 	OnStartLegRaise.Broadcast();
@@ -215,13 +292,91 @@ void UTraversalMovementComponent::DropLegs()
 
 	SetMovementMode(MOVE_Walking);
 	
-	CharacterOwner->GetMesh()->SetRelativeLocation(DefaultSkeletalMeshLocation);
 	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultCapsuleRadiusUnscaled, DefaultCapsuleHalfHeightUnscaled);
+
+	const float ComponentScale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	const float OldUnscaledHalfHeight = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	const float OldUnscaledRadius = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+
+	const float ClampedCrouchedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, CrouchedHalfHeight);
+	float HalfHeightAdjust = (OldUnscaledHalfHeight - ClampedCrouchedHalfHeight);
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
 
 	bHasLegsRaised = false;
 	OnStopLegRaise.Broadcast();
 }
 
+
+void UTraversalMovementComponent::StartClimbing()
+{
+	UActionPointComponent* TargetActionPoint = nullptr;
+	float BestDistanceToPoint = 0.0f;
+	float BestDotToPoint = 0.0f;
+
+	// attempt to mount to an action point
+	for(auto ActionPoint : ActionPointsInClimbableSpace)
+	{
+		FVector CharacterLoc = CharacterOwner->GetActorLocation();
+		FVector PointLoc = ActionPoint->GetComponentLocation();
+		FVector CharacterForward = FVector(CharacterOwner->GetActorForwardVector().X, CharacterOwner->GetActorForwardVector().Y, 0.f).GetSafeNormal();
+		FVector DirToPoint = (PointLoc - CharacterLoc).GetSafeNormal();
+		FVector PointForward = ActionPoint->GetForwardVector();
+		
+		float DistanceToPoint = FVector::Distance(CharacterLoc, PointLoc);
+		float DotToPoint = FVector::DotProduct( FVector(CharacterForward.X, CharacterForward.Y, 0.f), FVector(DirToPoint.X, DirToPoint.Y, 0.f) );
+		bool bLookUp = (IsFalling() && CharacterOwner->GetVelocity().Z > 0) || !IsFalling();
+
+		// scale distance to point based on dot from vel and dir to point
+		float RealDotToPoint = FVector::DotProduct(CharacterOwner->GetVelocity().GetSafeNormal(), DirToPoint);
+
+		float LateralDistance = ((PointLoc - CharacterLoc).ProjectOnTo(CharacterOwner->GetActorRightVector())).Size();
+
+		bool bIsCandidate = !ActionPoint->GetIsBusy() 
+							&& DistanceToPoint <= ClimbStartSettings.MaxDistanceThreshold 
+							//&& DotToPoint >= ClimbStartSettings.MaxDotThreshold 
+							&& PointLoc.Z <= CurrentMaxHeightToClimb 
+							&& PointLoc.Z >= CurrentMinHeightToClimb
+							&& LateralDistance <= ClimbStartSettings.LateralThreshold * 0.5f;
+
+		if(bIsCandidate)
+		{
+			bool bIsBetter = (DistanceToPoint <= BestDistanceToPoint) && (DotToPoint < BestDotToPoint);
+
+			if(TargetActionPoint == nullptr || bIsBetter)
+			{
+				TargetActionPoint = ActionPoint;
+				BestDistanceToPoint = DistanceToPoint;
+				BestDotToPoint = DotToPoint;
+				continue;
+			}
+		}
+		else
+		{
+#if WITH_EDITOR
+			DEBUG_SCREEN_ERROR("Failed To Start Climb......", 10);
+			DEBUG_SCREEN_ERROR("Distance To Point: %f", 10, DistanceToPoint);
+			DEBUG_SCREEN_ERROR("Dot To Point: %f", 10, DotToPoint);
+#endif // WITH_EDITOR
+		}
+	}
+
+	// see if there are any close enough,
+	// see if they are in front of us
+	// see if its a good height
+	if(TargetActionPoint != nullptr)
+	{
+		SetCurrentActionPoint(TargetActionPoint);
+		bIsClimbing = true;
+		RaiseLegs();
+	}
+}
+
+void UTraversalMovementComponent::StopClimbing()
+{
+	bIsClimbing = false;
+	DropLegs();
+	SetCurrentActionPoint(nullptr);
+}
 
 void UTraversalMovementComponent::PlayMontageWithTargetMatch(const FMatchTargetData& Data)
 {
@@ -236,16 +391,6 @@ void UTraversalMovementComponent::PlayMontageWithTargetMatch(const FMatchTargetD
 
 	// play montage
 	CharacterOwner->GetMesh()->GetAnimInstance()->Montage_Play(Data.AnimationMontage);
-
-	if(Data.bCrouch)
-	{
-		CharacterOwner->Crouch();
-	}
-
-	if(Data.bRaiseLegs)
-	{
-		RaiseLegs();
-	}
 }
 
 bool UTraversalMovementComponent::SweepForGround(FVector& SweepVelocity) const
@@ -254,32 +399,61 @@ bool UTraversalMovementComponent::SweepForGround(FVector& SweepVelocity) const
 
 	TArray<AActor*> ActorsToIgnore;
 	ActorsToIgnore.Add(CharacterOwner);
-	for(auto Actor : ActionPoints)
+	for(auto Actor : AllActionPoints)
 	{
 		ActorsToIgnore.Add(Actor->GetOwner());
 	}
 
 	FVector Start = CharacterOwner->GetActorLocation();
+	FVector End = Start - FVector(0, 0, DefaultCapsuleHalfHeightScaled);
 
-	// do a collision sweep and offset the in vector
 	bool bHit = UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
-	Start, Start + SweepVelocity,
-	DefaultCapsuleRadiusScaled,
-	DefaultCapsuleHalfHeightScaled, 
-	ETraceTypeQuery::TraceTypeQuery1,
-	true,
-	ActorsToIgnore,
-	EDrawDebugTrace::Type::ForDuration,
-	HitResult,
-	true,
-	FLinearColor::Red, FLinearColor::Green, 1
+		Start, End,
+		DefaultCapsuleRadiusScaled,
+		DefaultCapsuleHalfHeightScaled,
+		ETraceTypeQuery::TraceTypeQuery1,
+		true,
+		ActorsToIgnore,
+		EDrawDebugTrace::Type::None,
+		HitResult,
+		true,
+		FLinearColor::Red, FLinearColor::Green, 5
 	);
 
-	if(bHit && FVector::DotProduct(HitResult.ImpactNormal.GetSafeNormal(), FVector::UpVector) >= 1)
+	if (bHit)
 	{
-		SweepVelocity.Z = 0;
-		DRAW_SPHERE_GREEN(HitResult.ImpactPoint, 30, 1);
+		//DrawDebugLine(GetWorld(), Start, End, FColor::Red);
+		//DrawDebugLine(GetWorld(), Start, Start + SweepVelocity, FColor::Red);
+		/*DRAW_SPHERE_RED(End, 10, 1.f);
+		DRAW_SPHERE_BLUE(End - FVector(0, 0, DefaultCapsuleHalfHeightScaled), 10, 1.f);*/
+		//SweepVelocity.Z = FMath::Clamp(SweepVelocity.Z, 0.f, std::numeric_limits<float>::max());
+		//DRAW_SPHERE_GREEN(HitResult.ImpactPoint, 10, 1.f);
+		SweepVelocity -= (End - HitResult.ImpactPoint) - FVector(0, 0, DefaultCapsuleHalfHeightScaled);
 	}
 
 	return bHit;
+}
+
+bool UTraversalMovementComponent::InitActionPointDetection()
+{
+	if(ActionPointDetectionCollision != nullptr)
+	{
+		// get any current overlapped collisions, the callbacks will miss these...
+		TArray<UPrimitiveComponent*> OverlappingCollisions;
+		ActionPointDetectionCollision->GetOverlappingComponents(OverlappingCollisions);
+		for(auto Comp : OverlappingCollisions)
+		{
+			auto ActionPoint = Cast<UActionPointComponent>(Comp);
+			if(ActionPoint != nullptr)
+			{
+				ActionPointsInClimbableSpace.AddUnique(ActionPoint);
+			}
+		}
+
+		ActionPointDetectionCollision->OnComponentBeginOverlap.AddDynamic(this, &UTraversalMovementComponent::OnBeginOverlap);
+		ActionPointDetectionCollision->OnComponentEndOverlap.AddDynamic(this, &UTraversalMovementComponent::OnEndOverlap);
+		return true;
+	}
+
+	return false;
 }

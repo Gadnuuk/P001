@@ -8,6 +8,39 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTraverseDelegate);
 
 USTRUCT(BlueprintType, meta = (BlueprintSpawnableComponent))
+struct FTraverseSettings
+{
+	GENERATED_USTRUCT_BODY()
+	FTraverseSettings(){}
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxDistanceThreshold;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxDotThreshold;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxHeightThreshold;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinHeightThreshold;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float LateralThreshold;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float FallingHeightScalar;
+};
+
+UENUM(BlueprintType)
+enum EActionPointType
+{
+	AP_None,
+	AP_WallClimb,
+	AP_LedgeClimb
+};
+
+USTRUCT(BlueprintType, meta = (BlueprintSpawnableComponent))
 struct FMatchTargetData
 {
 	GENERATED_USTRUCT_BODY()

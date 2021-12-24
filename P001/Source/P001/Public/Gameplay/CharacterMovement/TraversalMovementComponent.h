@@ -8,6 +8,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "TraversalMovementComponent.generated.h"
 
+class UActionPointComponent;
+
 /**
  * 
  */
@@ -17,6 +19,8 @@ class P001_API UTraversalMovementComponent : public UCharacterMovementComponent
 	GENERATED_BODY()
 	
 public: 
+	UTraversalMovementComponent();
+
 	UPROPERTY(BlueprintAssignable)
 	FTraverseDelegate InitJumpEvent;
 	
@@ -27,13 +31,25 @@ public:
 	FTraverseDelegate OnStopLegRaise;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float LegRaiseHalfHeight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bCanEverRaiseLegs;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bShowArrow;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TSubclassOf<AActor> ActionPointActorClass;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TSubclassOf<USceneComponent> ActionPointComponentClass;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climbing")
+	FTraverseSettings ClimbStartSettings;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climbing")
+	FVector PlayerOffsetFromWall;
+
+	UPROPERTY(BlueprintReadWrite)
+	class USphereComponent* ActionPointDetectionCollision;
 
 public: 
 	UFUNCTION(BlueprintPure, Category = "Move State")
@@ -49,30 +65,68 @@ public:
 	void DropLegs();
 
 	UFUNCTION(BlueprintCallable, Category = "Move State")
+	void StartClimbing();
+	
+	UFUNCTION(BlueprintCallable, Category = "Move State")
+	void StopClimbing();
+
+	UFUNCTION(BlueprintCallable, Category = "Move State")
 	void PlayMontageWithTargetMatch(const FMatchTargetData& Data);
 
 	UFUNCTION(BlueprintCallable, Category = "Move State")
 	bool SweepForGround(FVector& SweepVelocity) const;
 
-protected:
-	UPROPERTY()
-	class USpringArmComponent* CameraBoom;
+	UFUNCTION(BlueprintPure, Category = "Move State")
+	bool GetIsClimbing() {return bIsClimbing;}
 
+	UFUNCTION(BlueprintCallable)
+	bool InitActionPointDetection();
+
+protected:
 	UPROPERTY()
 	TArray<FMatchTargetData> MatchTargets;
 
 	UPROPERTY()
 	UAnimInstance* AnimInstance;
 
-	TArray<class USceneComponent*> ActionPoints;
+	UPROPERTY()
+	TArray<UActionPointComponent*> AllActionPoints;
+	
+	UPROPERTY(BlueprintReadOnly)
+	TArray<UActionPointComponent*> ActionPointsInClimbableSpace;
+	
+	UPROPERTY(BlueprintReadOnly)
+	UActionPointComponent* CurrentActionPoint;
 
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual FVector ConstrainAnimRootMotionVelocity(const FVector& RootMotionVelocity, const FVector& CurrentVelocity) const override;
-	virtual void TickMatchTarget(float DeltaTime);
+	
+	void TickMatchTarget(float DeltaTime);
+	void SetCurrentActionPoint(UActionPointComponent* NewActionPoint);
+	void TickClimbPosition(float DeltaTime);
+
+	UFUNCTION()
+	void OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, 
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex,
+		bool bFromSweep,
+		const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnEndOverlap(UPrimitiveComponent* OverlappedComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex);
 
 private:
+	bool bIsClimbing;
+	bool bIsTransitioning;
 	bool bHasLegsRaised;
+
+	float CurrentMinHeightToClimb;
+	float CurrentMaxHeightToClimb;
 	
 	float DefaultCapsuleHalfHeightUnscaled;
 	float DefaultCapsuleRadiusUnscaled;
@@ -81,5 +135,4 @@ private:
 	float DefaultCapsuleRadiusScaled;
 	
 	FVector DefaultSkeletalMeshLocation;
-	FVector DefaultCameraBoomLocation;
 };

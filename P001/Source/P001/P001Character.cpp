@@ -7,6 +7,8 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
+#include "Components/ArrowComponent.h"
+#include "Components/SphereComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -39,12 +41,10 @@ AP001Character::AP001Character(const class FObjectInitializer& ObjectInitializer
 	GetCharacterMovement()->JumpZVelocity = 600.f;
 	GetCharacterMovement()->AirControl = 0.2f;
 
-	// traversal options set
-	GetTraversalMovementComponent()->bCanEverRaiseLegs = true;
 
 	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-	CameraBoom->SetupAttachment(GetMesh());
+	CameraBoom->SetupAttachment(GetCapsuleComponent());
 	CameraBoom->TargetArmLength = 300.0f; // The camera follows at this distance behind the character	
 	CameraBoom->bUsePawnControlRotation = true; // Rotate the arm based on the controller
 
@@ -52,6 +52,21 @@ AP001Character::AP001Character(const class FObjectInitializer& ObjectInitializer
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
+
+	ActionPointCollision = CreateDefaultSubobject<USphereComponent>(TEXT("Action Point Collision"));
+	ActionPointCollision->SetupAttachment(GetRootComponent());
+	ActionPointCollision->SetSphereRadius(500.f);	
+	// traversal options set
+	GetTraversalMovementComponent()->ActionPointDetectionCollision = ActionPointCollision;
+	GetTraversalMovementComponent()->bCanEverRaiseLegs = true;
+	GetTraversalMovementComponent()->ClimbStartSettings.MaxDistanceThreshold = 200.f;
+	GetTraversalMovementComponent()->ClimbStartSettings.MaxDotThreshold = 0.5f;
+	GetTraversalMovementComponent()->ClimbStartSettings.MaxHeightThreshold = 75.0f;
+	GetTraversalMovementComponent()->ClimbStartSettings.MinHeightThreshold = -50.0f;
+	GetTraversalMovementComponent()->ClimbStartSettings.FallingHeightScalar = 1.5f;
+	GetTraversalMovementComponent()->ClimbStartSettings.LateralThreshold = 100.f;
+	GetTraversalMovementComponent()->PlayerOffsetFromWall = FVector(50.f, 0, -50.f);
+
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named MyCharacter (to avoid direct content references in C++)
@@ -103,7 +118,7 @@ void AP001Character::StartJump()
 
 void AP001Character::MoveForward(float Value)
 {
-	if ((Controller != nullptr) && (Value != 0.0f))
+	if ((Controller != nullptr) && (Value != 0.0f) && (!GetTraversalMovementComponent()->GetIsClimbing()))
 	{
 		// find out which way is forward
 		const FRotator Rotation = Controller->GetControlRotation();
@@ -117,7 +132,7 @@ void AP001Character::MoveForward(float Value)
 
 void AP001Character::MoveRight(float Value)
 {
-	if ( (Controller != nullptr) && (Value != 0.0f) )
+	if ( (Controller != nullptr) && (Value != 0.0f) && (!GetTraversalMovementComponent()->GetIsClimbing()))
 	{
 		// find out which way is right
 		const FRotator Rotation = Controller->GetControlRotation();
