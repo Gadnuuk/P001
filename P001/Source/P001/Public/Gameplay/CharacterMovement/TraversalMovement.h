@@ -91,3 +91,19 @@ struct FMatchTargetData
 			&&  MatchTime == Rhs.MatchTime);
 	}
 };
+
+USTRUCT(BlueprintType)
+struct FTraverseActionPointData
+{	
+	GENERATED_USTRUCT_BODY();
+	FTraverseActionPointData(){}
+
+	UPROPERTY(BlueprintReadWrite)
+	float Distance;
+	
+	UPROPERTY(BlueprintReadWrite)
+	float LateralDistance;
+
+	UPROPERTY(BlueprintReadWrite)
+	float Score;
+};

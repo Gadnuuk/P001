@@ -174,11 +174,10 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 				FHitResult HitResult;
 				TArray<AActor*> ActorsToIgnore;
 				ActorsToIgnore.Add(CharacterOwner);
-				for (auto Actor : ActionPointsInClimbableSpace)
+				for (auto Comp : ActionPointsInClimbableSpace)
 				{
-					ActorsToIgnore.Add(Actor->GetOwner());
+					ActorsToIgnore.Add(Comp->GetOwner());
 				}
-				
 
 				if(UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
 					Start, End,
@@ -196,9 +195,58 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 					MaxSearchRadius = FVector::Distance(Start, HitResult.Location);
 				}
 
-				//DrawDebugLine(GetWorld(), Start, End, FColor::Red);
-				//DRAW_SPHERE_BLUE(Start, MaxSearchRadius, -1.0);
-				DrawDebugCylinder(GetWorld(), Start, Start + -CharacterOwner->GetActorForwardVector() * ClimbTransitionSettings.WallStepDepth, MaxSearchRadius, 30, FColor::Blue, false, -1.0f, (uint8)0U, 10);
+				DrawDebugCylinder(GetWorld(), Start, Start + -CharacterOwner->GetActorForwardVector() * ClimbTransitionSettings.WallStepDepth, MaxSearchRadius, 30, FColor::Blue, false, -1.0f, (uint8)0U, 5);
+
+				// Determine what action points are appropriate to climb to
+				TMap<UActionPointComponent*, FTraverseActionPointData> ActioPointsInRangeAndDirection;
+
+				TArray<UActionPointComponent*> ActionPointsToCheck = ActionPointsInClimbableSpace;
+				ActionPointsToCheck.Remove(CurrentActionPoint);
+
+				for (auto Comp : ActionPointsToCheck)
+				{
+					float DistanceToPoint = FVector::Distance(Comp->GetComponentLocation(), CharacterOwner->GetActorLocation());
+					
+					FVector ComponentLocation = Comp->GetComponentLocation();
+					FVector RelativeCompLoc = (ComponentLocation - CharacterOwner->GetActorLocation());
+					FVector LateralDirection = FVector::CrossProduct(InputVector, -CharacterOwner->GetActorForwardVector());
+					
+					float LateralDistance = RelativeCompLoc.ProjectOnToNormal(LateralDirection).Size();
+					float LateralDistanceToCheck = ClimbTransitionSettings.LateralThreshold;
+					float Dot = FVector::DotProduct(RelativeCompLoc.GetSafeNormal(), InputVector);
+
+					if(DistanceToPoint <= MaxSearchRadius && LateralDistance <= LateralDistanceToCheck && Dot > 0)
+					{	
+						FTraverseActionPointData Data;
+						Data.Distance = DistanceToPoint;
+						Data.LateralDistance = LateralDistance;
+						Data.Score =  (LateralDistanceToCheck - Data.LateralDistance) + Data.Distance;
+						ActioPointsInRangeAndDirection.Add(Comp, Data);
+					}
+				}
+
+				// among them choose the best among them...
+				TPair<UActionPointComponent*, FTraverseActionPointData> BestActionPoint;
+				bool bHasOne = false;
+				for(auto Pair : ActioPointsInRangeAndDirection)
+				{
+					if(!bHasOne)
+					{
+						BestActionPoint = Pair;
+						bHasOne = true;
+						continue;
+					}
+
+					if(Pair.Value.Score > BestActionPoint.Value.Score)
+					{
+						BestActionPoint = Pair;
+					}
+				}
+
+				if(bHasOne)
+				{
+					DRAW_SPHERE_BLUE(BestActionPoint.Key->GetComponentLocation(), 30, 0.1f);
+				}
 			}
 		}
 	}
@@ -375,7 +423,6 @@ void UTraversalMovementComponent::StartClimbing()
 			0.f, 
 			ClimbStartSettings.MaxDistanceScalar);
 		float DistanceToCheck = FMath::Clamp(ClimbStartSettings.MaxDistanceThreshold * DistanceScale, ClimbStartSettings.MaxDistanceThreshold, std::numeric_limits<float>::max()) ;
-		DEBUG_SCREEN_LOG("DISTANCE TO CHECK: %f", 10, DistanceToCheck);
 
 		bool bIsCandidate = !ActionPoint->GetIsBusy() 
 							&& DistanceToPoint <= DistanceToCheck
