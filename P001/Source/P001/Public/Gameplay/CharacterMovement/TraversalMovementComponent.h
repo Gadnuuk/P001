@@ -30,14 +30,35 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FTraverseDelegate OnStopLegRaise;
 
+	UPROPERTY(BlueprintAssignable)
+	FTraverseDelegate OnWallClimbStart;
+	
+	UPROPERTY(BlueprintAssignable)
+	FTraverseWallClimbDelegate OnWallClimbStartTransition;
+
+	UPROPERTY(BlueprintAssignable)
+	FTraverseDelegate OnWallClimbEndTransition;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ClimbTransitionInputTime;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float LegRaiseHalfHeight;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bCanEverRaiseLegs;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
 	bool bShowArrow;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
+	bool bFreezeClimbTransitions;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
+	bool bLogPossibleClimbPoints;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
+	bool bLogClimbTransitionAnimationValues;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TSubclassOf<AActor> ActionPointActorClass;
@@ -88,6 +109,18 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void AddClimbVerticalInput(float NewVertical);
 
+	UFUNCTION(BlueprintCallable)
+	void StartClimbTransition(UActionPointComponent* NewActionPoint, FVector ClimbDirection, float TransitionTime);
+	
+	UFUNCTION(BlueprintCallable)
+	void EndClimbTransition();
+	
+	UFUNCTION(BlueprintCallable, Exec)
+	void FreezeClimb(bool bFreeze);
+
+	UFUNCTION(BlueprintCallable, Exec)
+	void ShowArrow(bool bShow);
+
 protected:
 	UPROPERTY()
 	TArray<FMatchTargetData> MatchTargets;
@@ -100,6 +133,9 @@ protected:
 	
 	UPROPERTY(BlueprintReadOnly)
 	UActionPointComponent* CurrentActionPoint;
+	
+	UPROPERTY(BlueprintReadOnly)
+	UActionPointComponent* CurrentActionPointTransitioningTo;
 
 	UPROPERTY(BlueprintReadWrite)
 	float Horizontal;
@@ -133,6 +169,10 @@ private:
 	bool bIsClimbing;
 	bool bIsTransitioning;
 	bool bHasLegsRaised;
+
+	float CurrentClimbTransitionInputTime;
+	float ClimbTransitionTime;
+	float CurrentTransitionTime;
 
 	float CurrentMinHeightToClimb;
 	float CurrentMaxHeightToClimb;

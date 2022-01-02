@@ -6,6 +6,7 @@
 #include "TraversalMovement.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTraverseDelegate);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FTraverseWallClimbDelegate, float, X, float, Y);
 
 USTRUCT(BlueprintType, meta = (BlueprintSpawnableComponent))
 struct FTraverseSettings
@@ -106,4 +107,7 @@ struct FTraverseActionPointData
 
 	UPROPERTY(BlueprintReadWrite)
 	float Score;
+
+	UPROPERTY(BlueprintReadWrite)
+	FVector Direction;
 };

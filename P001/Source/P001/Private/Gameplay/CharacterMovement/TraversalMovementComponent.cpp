@@ -16,6 +16,7 @@
 
 UTraversalMovementComponent::UTraversalMovementComponent()
 {
+	ClimbTransitionInputTime = 0.5f;
 	LegRaiseHalfHeight = 50.f;
 }
 
@@ -142,7 +143,7 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 	// move the player to the current point
 	if(bIsClimbing)
 	{
-		if(CurrentActionPoint != nullptr && !bIsTransitioning)
+		if(CurrentActionPoint != nullptr)
 		{	
 			// use start settings here because it denotes our idle
 			FVector PlayerOffsetFromWall = ClimbStartSettings.PlayerOffsetFromWall;
@@ -158,94 +159,181 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 			CharacterOwner->SetActorLocation(TargetLocation);
 			CharacterOwner->SetActorRotation(TargetRotation);
 
-			// look for the next location the player can move to
-			if(Horizontal != 0 || Vertical != 0)
+			if(!bIsTransitioning)
 			{
-				//search radius should scale down with input - useful for joystick
-				float MaxSearchRadius = FMath::Clamp(ClimbTransitionSettings.MaxDistanceThreshold * FVector2D(Horizontal, Vertical).Size(),
-										0.f, ClimbTransitionSettings.MaxDistanceThreshold);
-				FVector InputVector = (CharacterOwner->GetActorRightVector() * Horizontal
-									+ CharacterOwner->GetActorUpVector() * Vertical)
-									.GetSafeNormal();
-				FVector Start = CharacterOwner->GetActorLocation() + (CharacterOwner->GetActorForwardVector() * -ClimbTransitionSettings.WallStepDepth);
-				FVector End = (InputVector * MaxSearchRadius) + Start;
+				CurrentTransitionTime = 0.0f;
 
-				// sweep for collision in the shape of our capsule to see if we need to adjust where we are looking
-				FHitResult HitResult;
-				TArray<AActor*> ActorsToIgnore;
-				ActorsToIgnore.Add(CharacterOwner);
-				for (auto Comp : ActionPointsInClimbableSpace)
+				// look for the next location the player can move to
+				if(Horizontal != 0 || Vertical != 0)
 				{
-					ActorsToIgnore.Add(Comp->GetOwner());
-				}
-
-				if(UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
-					Start, End,
-					CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius(),
-					CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight(),
-					ETraceTypeQuery::TraceTypeQuery1,
-					true,
-					ActorsToIgnore,
-					EDrawDebugTrace::Type::ForDuration,
-					HitResult,
-					true,
-					FLinearColor::Green, FLinearColor::Red, 0.1f
-				))
-				{
-					MaxSearchRadius = FVector::Distance(Start, HitResult.Location);
-				}
-
-				DrawDebugCylinder(GetWorld(), Start, Start + -CharacterOwner->GetActorForwardVector() * ClimbTransitionSettings.WallStepDepth, MaxSearchRadius, 30, FColor::Blue, false, -1.0f, (uint8)0U, 5);
-
-				// Determine what action points are appropriate to climb to
-				TMap<UActionPointComponent*, FTraverseActionPointData> ActioPointsInRangeAndDirection;
-
-				TArray<UActionPointComponent*> ActionPointsToCheck = ActionPointsInClimbableSpace;
-				ActionPointsToCheck.Remove(CurrentActionPoint);
-
-				for (auto Comp : ActionPointsToCheck)
-				{
-					float DistanceToPoint = FVector::Distance(Comp->GetComponentLocation(), CharacterOwner->GetActorLocation());
-					
-					FVector ComponentLocation = Comp->GetComponentLocation();
-					FVector RelativeCompLoc = (ComponentLocation - CharacterOwner->GetActorLocation());
-					FVector LateralDirection = FVector::CrossProduct(InputVector, -CharacterOwner->GetActorForwardVector());
-					
-					float LateralDistance = RelativeCompLoc.ProjectOnToNormal(LateralDirection).Size();
-					float LateralDistanceToCheck = ClimbTransitionSettings.LateralThreshold;
-					float Dot = FVector::DotProduct(RelativeCompLoc.GetSafeNormal(), InputVector);
-
-					if(DistanceToPoint <= MaxSearchRadius && LateralDistance <= LateralDistanceToCheck && Dot > 0)
-					{	
-						FTraverseActionPointData Data;
-						Data.Distance = DistanceToPoint;
-						Data.LateralDistance = LateralDistance;
-						Data.Score =  (LateralDistanceToCheck - Data.LateralDistance) + Data.Distance;
-						ActioPointsInRangeAndDirection.Add(Comp, Data);
-					}
-				}
-
-				// among them choose the best among them...
-				TPair<UActionPointComponent*, FTraverseActionPointData> BestActionPoint;
-				bool bHasOne = false;
-				for(auto Pair : ActioPointsInRangeAndDirection)
-				{
-					if(!bHasOne)
+					CurrentClimbTransitionInputTime += DeltaTime;
+					if(CurrentClimbTransitionInputTime >= (bFreezeClimbTransitions ? 0 : ClimbTransitionInputTime))
 					{
-						BestActionPoint = Pair;
-						bHasOne = true;
-						continue;
-					}
+						CurrentClimbTransitionInputTime = ClimbTransitionInputTime;
+						//search radius should scale down with input - useful for joystick
+						float MaxSearchRadius = FMath::Clamp(ClimbTransitionSettings.MaxDistanceThreshold * FVector2D(Horizontal, Vertical).Size(),
+												0.f, ClimbTransitionSettings.MaxDistanceThreshold);
+						FVector InputVector = (CharacterOwner->GetActorRightVector() * Horizontal
+											+ CharacterOwner->GetActorUpVector() * Vertical)
+											.GetSafeNormal();
+						FVector Start = CharacterOwner->GetActorLocation() + (CharacterOwner->GetActorForwardVector() * -ClimbTransitionSettings.WallStepDepth);
+						FVector End = (InputVector * MaxSearchRadius) + Start;
 
-					if(Pair.Value.Score > BestActionPoint.Value.Score)
-					{
-						BestActionPoint = Pair;
+						// sweep for collision in the shape of our capsule to see if we need to adjust where we are looking
+						FHitResult HitResult;
+						TArray<AActor*> ActorsToIgnore;
+						ActorsToIgnore.Add(CharacterOwner);
+						for (auto Comp : ActionPointsInClimbableSpace)
+						{
+							ActorsToIgnore.Add(Comp->GetOwner());
+						}
+
+						if(UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
+							Start, End,
+							CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius(),
+							CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight(),
+							ETraceTypeQuery::TraceTypeQuery1,
+							true,
+							ActorsToIgnore,
+							EDrawDebugTrace::Type::ForDuration,
+							HitResult,
+							true,
+							FLinearColor::Green, FLinearColor::Red, 0.1f
+						))
+						{
+							MaxSearchRadius = FVector::Distance(Start, HitResult.Location);
+						}
+
+						DrawDebugCylinder(GetWorld(), Start, Start + -CharacterOwner->GetActorForwardVector() * ClimbTransitionSettings.WallStepDepth, MaxSearchRadius, 30, FColor::Blue, false, -1.0f, (uint8)0U, 5);
+
+						// Determine what action points are appropriate to climb to
+						TMap<UActionPointComponent*, FTraverseActionPointData> ActioPointsInRangeAndDirection;
+
+						TArray<UActionPointComponent*> ActionPointsToCheck = ActionPointsInClimbableSpace;
+						ActionPointsToCheck.Remove(CurrentActionPoint);
+
+						for (auto Comp : ActionPointsToCheck)
+						{
+							FVector ReferencePoint = CurrentActionPoint->GetComponentLocation() + PlayerOffset;
+
+							float DistanceToPoint = FVector::Distance(Comp->GetComponentLocation(), ReferencePoint);
+					
+							FVector ComponentLocation = Comp->GetComponentLocation();
+							FVector RelativeCompLoc = (ComponentLocation + PlayerOffset) - ReferencePoint;
+							FVector LateralDirection = FVector::CrossProduct(InputVector, -CharacterOwner->GetActorForwardVector());
+					
+							float LateralDistance = RelativeCompLoc.ProjectOnToNormal(LateralDirection).Size();
+							float LateralDistanceToCheck = ClimbTransitionSettings.LateralThreshold;
+							float Dot = FVector::DotProduct(RelativeCompLoc.GetSafeNormal(), InputVector);
+							float MinSearchRadius = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+
+							if(DistanceToPoint <= MaxSearchRadius /*&& DistanceToPoint >= MinSearchRadius*/ && LateralDistance <= LateralDistanceToCheck && Dot > 0)
+							{	
+								FTraverseActionPointData Data;
+								Data.Distance = DistanceToPoint;
+								Data.LateralDistance = LateralDistance;
+								Data.Score =  (LateralDistanceToCheck - Data.LateralDistance) + ( 1 - Data.Distance / MaxSearchRadius );
+								Data.Direction = RelativeCompLoc;
+								ActioPointsInRangeAndDirection.Add(Comp, Data);
+
+								// debug it
+								if(bLogPossibleClimbPoints)
+								{
+									FVector DrawStart = ReferencePoint;
+									FVector LateralEnd = DrawStart + (LateralDirection * 100);
+									FVector InputEnd = DrawStart + InputVector * 100;
+
+									DrawDebugLine(GetWorld(), DrawStart, InputEnd, FColor::Red);
+
+									DEBUG_SCREEN_WARNING("----------------------", 0.2f);
+									DEBUG_SCREEN_WARNING("Direction %s, ", 0.2f, *Data.Direction.ToString());
+									DEBUG_SCREEN_WARNING("Score %f, ", 0.2f, Data.Score); 
+									DEBUG_SCREEN_WARNING("Lateral Distance %f, ", 0.2f, Data.LateralDistance);
+									DEBUG_SCREEN_WARNING("Distance %f, ", 0.2f, Data.Distance);
+									DEBUG_SCREEN_WARNING("%s, ", 0.2f, *Comp->GetOwner()->GetName());
+								}
+							}
+						}
+
+						// among them choose the best among them...
+						TPair<UActionPointComponent*, FTraverseActionPointData> BestActionPoint;
+						bool bHasOne = false;
+						for(auto Pair : ActioPointsInRangeAndDirection)
+						{
+							if(!bHasOne)
+							{
+								BestActionPoint = Pair;
+								bHasOne = true;
+								continue;
+							}
+
+							if(Pair.Value.Score > BestActionPoint.Value.Score)
+							{
+								BestActionPoint = Pair;
+							}
+
+							DRAW_SPHERE_YELLOW(Pair.Key->GetComponentLocation(), 30, 0.1f);
+						}
+
+						if(bHasOne)
+						{
+							DRAW_SPHERE_BLUE(BestActionPoint.Key->GetComponentLocation(), 30, 0.1f);
+
+							if(!bFreezeClimbTransitions)
+							{
+								FVector ReferencePoint = CurrentActionPoint->GetComponentLocation();
+								FVector ComponentLocation = BestActionPoint.Key->GetComponentLocation();
+								FVector RelativeCompLoc = ComponentLocation - ReferencePoint;
+								
+								float DistanceToPoint = FVector::Distance(BestActionPoint.Key->GetComponentLocation(), ReferencePoint) / MaxSearchRadius;
+								float Left = FVector::DotProduct(-CurrentActionPoint->GetRightVector(), RelativeCompLoc.GetSafeNormal());
+								float Up = FVector::DotProduct(CurrentActionPoint->GetUpVector(), RelativeCompLoc.GetSafeNormal());
+
+								FVector NormalizedClimbDirection = FVector(Left, 0.f, Up) * DistanceToPoint;
+
+								if(bLogClimbTransitionAnimationValues)
+								{
+									DEBUG_SCREEN_ERROR("Distance: %f", 10, DistanceToPoint);
+									DEBUG_SCREEN_ERROR("Left    : %f", 10, Left);
+									DEBUG_SCREEN_ERROR("Up      : %f", 10, Up);
+								}
+
+								StartClimbTransition(BestActionPoint.Key, NormalizedClimbDirection, DistanceToPoint);
+							}
+						
+							CurrentClimbTransitionInputTime = 0;
+						}
 					}
 				}
-
-				if(bHasOne)
+				else
 				{
-					DRAW_SPHERE_BLUE(BestActionPoint.Key->GetComponentLocation(), 30, 0.1f);
+					CurrentClimbTransitionInputTime = 0;	
+				}
+			}
+			else
+			{
+				CurrentClimbTransitionInputTime = 0;
+
+				CurrentTransitionTime += DeltaTime;
+				if(CurrentTransitionTime > ClimbTransitionTime)
+				{
+					CurrentTransitionTime = ClimbTransitionTime;
+				}
+
+				float LerpDelta = CurrentTransitionTime / ClimbTransitionTime;
+
+				// move for transition
+				PlayerOffset = CurrentActionPointTransitioningTo->GetForwardVector() * PlayerOffsetFromWall.X
+							 + CurrentActionPointTransitioningTo->GetRightVector() * PlayerOffsetFromWall.Y
+							 + CurrentActionPointTransitioningTo->GetUpVector() * PlayerOffsetFromWall.Z;
+				
+				TargetLocation = CurrentActionPointTransitioningTo->GetComponentLocation() + PlayerOffset;
+				TargetLocation = FMath::Lerp(CharacterOwner->GetActorLocation(), TargetLocation, LerpDelta);
+				CharacterOwner->SetActorLocation(TargetLocation);
+
+				if(CurrentTransitionTime == ClimbTransitionTime)
+				{
+					EndClimbTransition();
 				}
 			}
 		}
@@ -464,9 +552,11 @@ void UTraversalMovementComponent::StartClimbing()
 	{
 		SetCurrentActionPoint(TargetActionPoint);
 		bIsClimbing = true;
+		CharacterOwner->GetRootComponent()->ComponentVelocity = FVector(0.f);
 		RaiseLegs();
 	}
 }
+
 
 void UTraversalMovementComponent::StopClimbing()
 {
@@ -474,6 +564,7 @@ void UTraversalMovementComponent::StopClimbing()
 	DropLegs();
 	SetCurrentActionPoint(nullptr);
 }
+
 
 void UTraversalMovementComponent::PlayMontageWithTargetMatch(const FMatchTargetData& Data)
 {
@@ -489,6 +580,7 @@ void UTraversalMovementComponent::PlayMontageWithTargetMatch(const FMatchTargetD
 	// play montage
 	CharacterOwner->GetMesh()->GetAnimInstance()->Montage_Play(Data.AnimationMontage);
 }
+
 
 bool UTraversalMovementComponent::SweepForGround(FVector& SweepVelocity) const
 {
@@ -563,4 +655,36 @@ void UTraversalMovementComponent::AddClimbHorizontalInput(float NewHorizontal)
 void UTraversalMovementComponent::AddClimbVerticalInput(float NewVertical)
 {
 	Vertical = NewVertical;
+}
+
+void UTraversalMovementComponent::StartClimbTransition(UActionPointComponent* NewActionPoint, FVector ClimbDirection, float TransitionTime)
+{
+	CurrentActionPointTransitioningTo = NewActionPoint;
+	bIsTransitioning = true;
+	ClimbTransitionTime = TransitionTime;
+	CurrentClimbTransitionInputTime = 0.f;
+
+	OnWallClimbStartTransition.Broadcast(ClimbDirection.X, ClimbDirection.Z);
+}
+
+void UTraversalMovementComponent::EndClimbTransition()
+{
+	if(CurrentActionPointTransitioningTo != nullptr)
+	{
+		SetCurrentActionPoint(CurrentActionPointTransitioningTo);
+		CurrentActionPointTransitioningTo = nullptr;
+		bIsTransitioning = false;
+
+		OnWallClimbEndTransition.Broadcast();
+	}
+}
+
+void UTraversalMovementComponent::FreezeClimb(bool bFreeze)
+{
+	bFreezeClimbTransitions = bFreeze;
+}
+
+void UTraversalMovementComponent::ShowArrow(bool bShow)
+{
+	bShowArrow = bShow;
 }
