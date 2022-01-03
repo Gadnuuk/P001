@@ -3,6 +3,7 @@
 #pragma once
 
 #include "TraversalMovement.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -59,6 +60,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
 	bool bLogClimbTransitionAnimationValues;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
+	TEnumAsByte<EDrawDebugTrace::Type> CollisionCheckDrawMode;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
+	float CollisionCheckDrawTime;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TSubclassOf<AActor> ActionPointActorClass;
