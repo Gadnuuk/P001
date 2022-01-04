@@ -5,6 +5,12 @@
 #include "CoreMinimal.h"
 #include "TraversalMovement.generated.h"
 
+#define LEFT_HAND_SOCKET "Socket_LeftHand"
+#define RIGHT_HAND_SOCKET "Socket_RightHand"
+
+#define LEFT_FOOT_SOCKET "Socket_LeftFoot"
+#define RIGHT_FOOT_SOCKET "Socket_RightFoot"
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTraverseDelegate);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FTraverseWallClimbDelegate, float, X, float, Y);
 

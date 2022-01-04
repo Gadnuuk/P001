@@ -4,6 +4,7 @@
 
 #include "TraversalMovement.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Engine/EngineTypes.h"
 
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -41,7 +42,13 @@ public:
 	FTraverseDelegate OnWallClimbEndTransition;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float TestLerp = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float ClimbTransitionInputTime;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ClimbHandWidth;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float LegRaiseHalfHeight;
@@ -49,6 +56,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bCanEverRaiseLegs;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector2D ClimbTransitionMatchTargetRange;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
 	bool bShowArrow;
 
@@ -194,4 +204,10 @@ private:
 	float RaiseLegsCapsuleRadius;
 	
 	FVector DefaultSkeletalMeshLocation;
+
+	FString ClimbTransitionSocketName;
+	bool bClimbTransitionAnchorRight;
+
+
+	ECollisionEnabled::Type OriginalCollisionSetting;
 };

@@ -19,6 +19,7 @@ UTraversalMovementComponent::UTraversalMovementComponent()
 	LegRaiseHalfHeight = 50.f;
 	CollisionCheckDrawMode = EDrawDebugTrace::Type::ForDuration;
 	CollisionCheckDrawTime = 0.1f;
+	ClimbTransitionMatchTargetRange = FVector2D(0.24f, 0.46f);
 }
 
 void UTraversalMovementComponent::BeginPlay()
@@ -36,6 +37,8 @@ void UTraversalMovementComponent::BeginPlay()
 
 	// tell the arrow component to show, this is usfull for displaying the characters center mass.
 	CharacterOwner->GetArrowComponent()->SetHiddenInGame(!bShowArrow);
+
+	OriginalCollisionSetting = CharacterOwner->GetCapsuleComponent()->GetCollisionEnabled();
 
 	DefaultCapsuleHalfHeightUnscaled = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 	DefaultCapsuleRadiusUnscaled = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
@@ -146,14 +149,15 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 	{
 		if(CurrentActionPoint != nullptr)
 		{	
-			// use start settings here because it denotes our idle
-			FVector PlayerOffsetFromWall = ClimbStartSettings.PlayerOffsetFromWall;
-
+			FVector PlayerOffsetFromWall = ClimbTransitionSettings.PlayerOffsetFromWall;
 			FVector PlayerOffset = CurrentActionPoint->GetForwardVector() * PlayerOffsetFromWall.X
 				+ CurrentActionPoint->GetRightVector() * PlayerOffsetFromWall.Y
 				+ CurrentActionPoint->GetUpVector() * PlayerOffsetFromWall.Z;
 
-			FVector TargetLocation = CurrentActionPoint->GetComponentLocation() + PlayerOffset;
+			FVector RootOffsetFromHand = CharacterOwner->GetActorLocation() - CharacterOwner->GetMesh()->GetSocketLocation(LEFT_HAND_SOCKET);
+			FVector HandOffset = CurrentActionPoint->GetRightVector() * (ClimbHandWidth * 0.5f);
+
+			FVector TargetLocation = CurrentActionPoint->GetComponentLocation() + RootOffsetFromHand + PlayerOffset + HandOffset;
 			FQuat TargetRotation = (-CurrentActionPoint->GetForwardVector()).ToOrientationQuat();
 
 			if(!bIsTransitioning)
@@ -184,7 +188,10 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 						TArray<UActionPointComponent*> ActionPointsToCheck = ActionPointsInClimbableSpace;
 						ActionPointsToCheck.Remove(CurrentActionPoint);
 						
-						DrawDebugCylinder(GetWorld(), CurrentActionPoint->GetComponentLocation(), CurrentActionPoint->GetComponentLocation() + -CharacterOwner->GetActorForwardVector() * ClimbTransitionSettings.WallStepDepth, MaxSearchRadius, 30, FColor::Blue, false, -1.0f, (uint8)0U, 5);
+						if(bLogPossibleClimbPoints)
+						{
+							DrawDebugCylinder(GetWorld(), CurrentActionPoint->GetComponentLocation(), CurrentActionPoint->GetComponentLocation() + -CharacterOwner->GetActorForwardVector() * ClimbTransitionSettings.WallStepDepth, MaxSearchRadius, 30, FColor::Blue, false, -1.0f, (uint8)0U, 5);
+						}
 
 						for (auto Comp : ActionPointsToCheck)
 						{
@@ -278,12 +285,14 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 							{
 								BestActionPoint = Pair;
 							}
-
 						}
 
 						if(bHasOne)
 						{
-							DRAW_SPHERE_BLUE(BestActionPoint.Key->GetComponentLocation(), 20, 0.1f);
+							if(bLogPossibleClimbPoints)
+							{
+								DRAW_SPHERE_BLUE(BestActionPoint.Key->GetComponentLocation(), 15, 0.1f);
+							}
 
 							if(!bFreezeClimbTransitions)
 							{
@@ -304,7 +313,7 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 									DEBUG_SCREEN_ERROR("Up      : %f", 10, NormalizedClimbDirection.Z);
 								}
 
-								StartClimbTransition(BestActionPoint.Key, NormalizedClimbDirection, DistanceToPoint);
+								StartClimbTransition(BestActionPoint.Key, NormalizedClimbDirection, 1.13f/*DistanceToPoint*/);
 							}
 						
 							CurrentClimbTransitionInputTime = 0;
@@ -328,14 +337,27 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 
 				float LerpDelta = CurrentTransitionTime / ClimbTransitionTime;
 
-				// move for transition
-				PlayerOffset = CurrentActionPointTransitioningTo->GetForwardVector() * PlayerOffsetFromWall.X
-							 + CurrentActionPointTransitioningTo->GetRightVector() * PlayerOffsetFromWall.Y
-							 + CurrentActionPointTransitioningTo->GetUpVector() * PlayerOffsetFromWall.Z;
-				
-				TargetLocation = CurrentActionPointTransitioningTo->GetComponentLocation() + PlayerOffset;
-				TargetLocation = FMath::Lerp(CharacterOwner->GetActorLocation(), TargetLocation, LerpDelta);
-				//CharacterOwner->SetActorLocation(TargetLocation);
+				if(CurrentTransitionTime >= ClimbTransitionMatchTargetRange.X && CurrentTransitionTime <= ClimbTransitionMatchTargetRange.Y)
+				{
+					// ANCHOR THE HAND TO THE POINT
+					if(CharacterOwner->GetMesh()->DoesSocketExist(*ClimbTransitionSocketName))
+					{
+						RootOffsetFromHand = CharacterOwner->GetActorLocation() - CharacterOwner->GetMesh()->GetSocketLocation(*ClimbTransitionSocketName);
+						HandOffset = CurrentActionPointTransitioningTo->GetRightVector() * (bClimbTransitionAnchorRight ? -1 : 1) * (ClimbHandWidth * 0.5f);
+						
+						PlayerOffset = CurrentActionPointTransitioningTo->GetForwardVector() * PlayerOffsetFromWall.X
+										+ CurrentActionPointTransitioningTo->GetRightVector() * PlayerOffsetFromWall.Y
+										+ CurrentActionPointTransitioningTo->GetUpVector() * PlayerOffsetFromWall.Z;
+
+						TargetLocation = CurrentActionPointTransitioningTo->GetComponentLocation() + RootOffsetFromHand + PlayerOffset + HandOffset;
+						TargetLocation = FMath::Lerp(CharacterOwner->GetActorLocation(), TargetLocation, TestLerp);
+						CharacterOwner->SetActorLocation(TargetLocation);
+					}
+					else
+					{
+						DEBUG_SCREEN_LOG("Socket does not exist", 0.2f);
+					}
+				}
 
 				if(CurrentTransitionTime == ClimbTransitionTime)
 				{
@@ -432,9 +454,10 @@ void UTraversalMovementComponent::RaiseLegs()
 	{
 		return;
 	}
-
+	
 	// set the movement move to flying
 	SetMovementMode(MOVE_Flying);
+	CharacterOwner->GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
 
 	const float ComponentScale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
 	const float OldUnscaledHalfHeight = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
@@ -471,6 +494,7 @@ void UTraversalMovementComponent::DropLegs()
 	}
 
 	SetMovementMode(MOVE_Walking);
+	CharacterOwner->GetCapsuleComponent()->SetCollisionEnabled(OriginalCollisionSetting);
 	
 	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultCapsuleRadiusUnscaled, DefaultCapsuleHalfHeightUnscaled);
 
@@ -669,7 +693,8 @@ void UTraversalMovementComponent::StartClimbTransition(UActionPointComponent* Ne
 	bIsTransitioning = true;
 	ClimbTransitionTime = TransitionTime;
 	CurrentClimbTransitionInputTime = 0.f;
-
+	bClimbTransitionAnchorRight = ClimbDirection.X >= 0;
+	ClimbTransitionSocketName =  bClimbTransitionAnchorRight ? RIGHT_HAND_SOCKET : LEFT_HAND_SOCKET ;
 	OnWallClimbStartTransition.Broadcast(ClimbDirection.X, ClimbDirection.Z);
 }
 
