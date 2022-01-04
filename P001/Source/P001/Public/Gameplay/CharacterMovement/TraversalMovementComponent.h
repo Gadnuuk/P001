@@ -138,6 +138,18 @@ public:
 	UFUNCTION(BlueprintCallable, Exec)
 	void ShowArrow(bool bShow);
 
+	UFUNCTION(BlueprintPure)
+	FVector GetLocationFromActionPoint(UActionPointComponent* ActionPoint, bool bAnchorRight = false);
+	
+	UFUNCTION(BlueprintPure)
+	FQuat GetRotationFromActionPoint(UActionPointComponent* ActionPoint);
+
+	UFUNCTION(BlueprintCallable)
+	UActionPointComponent* FindNextActionPoint(float DeltaTime);
+
+	UFUNCTION(BlueprintPure)
+	bool CanReachActionPoint(UActionPointComponent* ActionPoint);
+
 protected:
 	UPROPERTY()
 	TArray<FMatchTargetData> MatchTargets;
