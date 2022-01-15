@@ -55,6 +55,7 @@ void UTraversalMovementComponent::TickComponent(float DeltaTime, enum ELevelTick
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	TickMatchTarget(DeltaTime);
+	TickClimbInput(DeltaTime);
 	TickClimbPosition(DeltaTime);
 
 	// if we are in the walk state
@@ -70,6 +71,7 @@ void UTraversalMovementComponent::TickComponent(float DeltaTime, enum ELevelTick
 			bOrientRotationToMovement = true;
 		}
 	}
+
 }
 
 
@@ -142,8 +144,118 @@ void UTraversalMovementComponent::SetCurrentActionPoint(UActionPointComponent* N
 	}
 }
 
+void UTraversalMovementComponent::TickClimbInput(float DeltaTime)
+{
+	if(bIsClimbing)
+	{
+		if(bClimbingPaused)
+		{
+			// tick the timere
+
+			// if time is not reached
+			bIsLeaning = false;
+
+			return;
+		}
+
+		// find next point
+		if(!bIsTransitioning)
+		{
+			if(Horizontal == 0 && Vertical == 0)
+			{
+				// default hand anchor
+
+				CurrentClimbTransitionInputTime = 0;
+				bIsLeaning = false;
+				return;
+			}
+
+			CurrentClimbTransitionInputTime += DeltaTime;
+
+			// has the player held input for long enough
+			if (CurrentClimbTransitionInputTime >= ClimbTransitionInputTime)
+			{
+				// look for point
+				UActionPointComponent* NextActionPoint = FindNextActionPoint(DeltaTime);
+
+				if (NextActionPoint != nullptr)
+				{
+					bIsLeaning = false;
+
+					FVector TargetLocation = GetLocationFromActionPoint(CurrentActionPoint, bAnchorRightHand);
+					FQuat TargetRotation = GetRotationFromActionPoint(CurrentActionPoint);
+
+					CharacterOwner->SetActorLocation(TargetLocation);
+					CharacterOwner->SetActorRotation(TargetRotation);
+
+					if (!bFreezeClimbTransitions)
+					{
+						FVector ReferencePoint = CurrentActionPoint->GetComponentLocation();
+						FVector ComponentLocation = NextActionPoint->GetComponentLocation();
+						FVector RelativeCompLoc = ComponentLocation - ReferencePoint;
+
+						float DistanceToPoint = FVector::Distance(NextActionPoint->GetComponentLocation(), ReferencePoint) / ClimbTransitionSettings.MaxDistanceThreshold;
+						float Left = FVector::DotProduct(-CurrentActionPoint->GetRightVector(), RelativeCompLoc.GetSafeNormal());
+						float Up = FVector::DotProduct(CurrentActionPoint->GetUpVector(), RelativeCompLoc.GetSafeNormal());
+
+						FVector NormalizedClimbDirection = FVector(Left, 0.f, Up) * DistanceToPoint;
+
+						if (bLogClimbTransitionAnimationValues)
+						{
+							DEBUG_SCREEN_ERROR("Distance: %f", 10, DistanceToPoint);
+							DEBUG_SCREEN_ERROR("Right   : %f", 10, NormalizedClimbDirection.X);
+							DEBUG_SCREEN_ERROR("Up      : %f", 10, NormalizedClimbDirection.Z);
+						}
+
+						StartClimbTransition(NextActionPoint, NormalizedClimbDirection, 1.13f/*DistanceToPoint*/);
+					}
+				}
+				else
+				{
+					// make the player lean
+					bIsLeaning = true;
+					// add pause to the lean var for switching hands
+
+					if(PreviousNonZeroHorizontal <= 0 && LastNonZeroHorizontal >0)
+					{
+						// switch?	
+						DEBUG_SCREEN_ERROR("Cross", 5);
+					}
+					else if(PreviousNonZeroHorizontal >= 0 && LastNonZeroHorizontal < 0)
+					{
+						// switch?	
+						DEBUG_SCREEN_ERROR("Cross", 5);
+					}
+
+
+					LeanDirection = FVector(Horizontal, 0.f, Vertical);
+					bAnchorRightHand = LastNonZeroHorizontal < 0;
+				}
+			}
+			else
+			{
+				bIsLeaning = false;
+			}
+		}
+		else
+		{
+			// kill input		
+			bIsLeaning = false;
+			CurrentClimbTransitionInputTime = 0.f;
+		}
+	}
+	else
+	{
+		bIsLeaning = false;
+	}
+}
+
 void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 {
+	// if transitioning
+	// anchor that hand
+	//else use last non zero horizontal input  to decide
+
 	// move the player to the current point
 	if (bIsClimbing && CurrentActionPoint != nullptr)
 	{
@@ -157,10 +269,11 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 
 			if (CurrentTransitionTime >= ClimbTransitionMatchTargetRange.X && CurrentTransitionTime <= ClimbTransitionMatchTargetRange.Y)
 			{
+				bAnchorRightHand = bClimbTransitionAnchorRight;
 				// ANCHOR THE HAND TO THE POINT during the transition
 				if (CharacterOwner->GetMesh()->DoesSocketExist(*ClimbTransitionSocketName))
 				{
-					FVector TargetLocation = GetLocationFromActionPoint(CurrentActionPointTransitioningTo, bClimbTransitionAnchorRight);
+					FVector TargetLocation = GetLocationFromActionPoint(CurrentActionPointTransitioningTo, bClimbTransitionAnchorRight, TestLerp);
 					FQuat TargetRotation = GetRotationFromActionPoint(CurrentActionPointTransitioningTo); 
 
 					CharacterOwner->SetActorLocation(TargetLocation);
@@ -180,54 +293,12 @@ void UTraversalMovementComponent::TickClimbPosition(float DeltaTime)
 		else
 		{
 			// glue the player to the current point
-			FVector TargetLocation = GetLocationFromActionPoint(CurrentActionPoint, true);
+			FVector TargetLocation = GetLocationFromActionPoint(CurrentActionPoint, bAnchorRightHand);
 			FQuat TargetRotation = GetRotationFromActionPoint(CurrentActionPoint);
 
 			CharacterOwner->SetActorLocation(TargetLocation);
 			CharacterOwner->SetActorRotation(TargetRotation);
-			CurrentTransitionTime = 0.0f;
-
-			if (Horizontal != 0 || Vertical != 0)
-			{
-				CurrentClimbTransitionInputTime += DeltaTime;
-
-				// has the player held input for long enough
-				if (CurrentClimbTransitionInputTime >= (bFreezeClimbTransitions ? 0 : ClimbTransitionInputTime))
-				{
-					// look for point
-					UActionPointComponent* NextActionPoint = FindNextActionPoint(DeltaTime);
-
-					if (NextActionPoint != nullptr)
-					{
-						if (!bFreezeClimbTransitions)
-						{
-							FVector ReferencePoint = CurrentActionPoint->GetComponentLocation();
-							FVector ComponentLocation = NextActionPoint->GetComponentLocation();
-							FVector RelativeCompLoc = ComponentLocation - ReferencePoint;
-
-							float DistanceToPoint = FVector::Distance(NextActionPoint->GetComponentLocation(), ReferencePoint) / ClimbTransitionSettings.MaxDistanceThreshold;
-							float Left = FVector::DotProduct(-CurrentActionPoint->GetRightVector(), RelativeCompLoc.GetSafeNormal());
-							float Up = FVector::DotProduct(CurrentActionPoint->GetUpVector(), RelativeCompLoc.GetSafeNormal());
-
-							FVector NormalizedClimbDirection = FVector(Left, 0.f, Up) * DistanceToPoint;
-
-							if (bLogClimbTransitionAnimationValues)
-							{
-								DEBUG_SCREEN_ERROR("Distance: %f", 10, DistanceToPoint);
-								DEBUG_SCREEN_ERROR("Right   : %f", 10, NormalizedClimbDirection.X);
-								DEBUG_SCREEN_ERROR("Up      : %f", 10, NormalizedClimbDirection.Z);
-							}
-
-							StartClimbTransition(NextActionPoint, NormalizedClimbDirection, 1.13f/*DistanceToPoint*/);
-						}
-					}
-				}
-			}
-			else
-			{
-				CurrentClimbTransitionInputTime = 0;
-			}
-			}
+		}
 	}
 	else
 	{
@@ -447,6 +518,7 @@ void UTraversalMovementComponent::StartClimbing()
 		bIsClimbing = true;
 		CurrentClimbTransitionInputTime = 0.f;
 		CharacterOwner->GetRootComponent()->ComponentVelocity = FVector(0.f);
+		bClimbingPause =	false;
 		RaiseLegs();
 	}
 }
@@ -543,7 +615,13 @@ bool UTraversalMovementComponent::InitActionPointDetection()
 
 void UTraversalMovementComponent::AddClimbHorizontalInput(float NewHorizontal)
 {
+	PreviousHorizontal = Horizontal;
 	Horizontal = NewHorizontal;
+	if(NewHorizontal != 0)
+	{
+		PreviousNonZeroHorizontal = LastNonZeroHorizontal;
+		LastNonZeroHorizontal = NewHorizontal;
+	}
 }
 
 void UTraversalMovementComponent::AddClimbVerticalInput(float NewVertical)
@@ -574,6 +652,13 @@ void UTraversalMovementComponent::EndClimbTransition()
 	}
 }
 
+void UTraversalMovementComponent::PauseClimb(float AmountOfTime)
+{
+	bClimbingPause = true;
+	ClimbPauseTime = AmountOfTime;
+	CurrentClimbPauseTime = 0.f;
+}
+
 void UTraversalMovementComponent::FreezeClimb(bool bFreeze)
 {
 	bFreezeClimbTransitions = bFreeze;
@@ -584,19 +669,23 @@ void UTraversalMovementComponent::ShowArrow(bool bShow)
 	bShowArrow = bShow;
 }
 
-FVector UTraversalMovementComponent::GetLocationFromActionPoint(UActionPointComponent* ActionPoint, bool bAnchorRight /*= false*/)
+FVector UTraversalMovementComponent::GetLocationFromActionPoint(UActionPointComponent* ActionPoint, bool bAnchorRight, float Lerp /*= 1.f*/)
 {
 	FVector PlayerOffsetFromWall = ClimbTransitionSettings.PlayerOffsetFromWall;
 	FVector PlayerOffset = ActionPoint->GetForwardVector() * PlayerOffsetFromWall.X
 		+ ActionPoint->GetRightVector() * PlayerOffsetFromWall.Y
 		+ ActionPoint->GetUpVector() * PlayerOffsetFromWall.Z;
 
+	// if you are leaning left, anchor the right to the left of the point
+	// if leaning right, anchor left to the right of the point
 	FString SocketName = bAnchorRight ? RIGHT_HAND_SOCKET : LEFT_HAND_SOCKET;
+	float HandOffsetAmount = (ClimbHandWidth * (bAnchorRight ? -0.5f : 0.5f));
+
 	FVector RootOffsetFromHand = CharacterOwner->GetActorLocation() - CharacterOwner->GetMesh()->GetSocketLocation(*SocketName);
-	FVector HandOffset = ActionPoint->GetRightVector() * (ClimbHandWidth * (bAnchorRight ? -0.5f : 0.5f));
+	FVector HandOffset = ActionPoint->GetRightVector() * HandOffsetAmount;
 
 	FVector TargetLocation = (ActionPoint->GetComponentLocation() + RootOffsetFromHand + PlayerOffset + HandOffset);
-	TargetLocation = FMath::Lerp(CharacterOwner->GetActorLocation(), TargetLocation, TestLerp);
+	TargetLocation = FMath::Lerp(CharacterOwner->GetActorLocation(), TargetLocation, Lerp);
 
 	return TargetLocation;
 }
@@ -710,7 +799,7 @@ bool UTraversalMovementComponent::CanReachActionPoint(UActionPointComponent* Act
 	// Cast to Point to see if it's possible
 	FVector DepthCheckOffset = (CharacterOwner->GetActorForwardVector() * -ClimbTransitionSettings.WallStepDepth);
 	FVector Start = CharacterOwner->GetActorLocation() + DepthCheckOffset;
-	FVector End = GetLocationFromActionPoint(ActionPoint) + DepthCheckOffset;
+	FVector End = GetLocationFromActionPoint(ActionPoint, bAnchorRightHand) + DepthCheckOffset;
 
 	FHitResult HitResult;
 	TArray<AActor*> ActorsToIgnore;
@@ -730,6 +819,6 @@ bool UTraversalMovementComponent::CanReachActionPoint(UActionPointComponent* Act
 		CollisionCheckDrawMode,
 		HitResult,
 		true,
-		FLinearColor::Green, FLinearColor::Red, 0.1f
+		FLinearColor::Green, FLinearColor::Red, CollisionCheckDrawTime
 	);
 }

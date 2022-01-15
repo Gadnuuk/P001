@@ -71,6 +71,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
 	bool bLogClimbTransitionAnimationValues;
 
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
 	TEnumAsByte<EDrawDebugTrace::Type> CollisionCheckDrawMode;
 
@@ -85,6 +86,15 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climbing")
 	FTraverseSettings ClimbTransitionSettings;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
+	bool bIsLeaning;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
+	bool bAnchorRightHand;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
+	FVector LeanDirection;
 
 	UPROPERTY(BlueprintReadWrite)
 	class USphereComponent* ActionPointDetectionCollision;
@@ -131,6 +141,9 @@ public:
 	
 	UFUNCTION(BlueprintCallable)
 	void EndClimbTransition();
+
+	UFUNCTION(BlueprintCallable)
+	void PauseClimb(float AmountOfTime);
 	
 	UFUNCTION(BlueprintCallable, Exec)
 	void FreezeClimb(bool bFreeze);
@@ -139,7 +152,7 @@ public:
 	void ShowArrow(bool bShow);
 
 	UFUNCTION(BlueprintPure)
-	FVector GetLocationFromActionPoint(UActionPointComponent* ActionPoint, bool bAnchorRight = false);
+	FVector GetLocationFromActionPoint(UActionPointComponent* ActionPoint, bool bAnchorRight, float Lerp = 1.f);
 	
 	UFUNCTION(BlueprintPure)
 	FQuat GetRotationFromActionPoint(UActionPointComponent* ActionPoint);
@@ -168,9 +181,13 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite)
 	float Horizontal;
+	UPROPERTY(BlueprintReadWrite)
+	float PreviousHorizontal;
 	
 	UPROPERTY(BlueprintReadWrite)
 	float Vertical;
+	UPROPERTY(BlueprintReadWrite)
+	float PreviousVertical;
 
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -178,7 +195,8 @@ protected:
 	
 	void TickMatchTarget(float DeltaTime);
 	void SetCurrentActionPoint(UActionPointComponent* NewActionPoint);
-	void TickClimbPosition(float DeltaTime);
+	void TickClimbInput(float DeltaTime);
+	void TickClimbPosition(float DeltaTime);'
 
 	UFUNCTION()
 	void OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, 
@@ -203,6 +221,10 @@ private:
 	float ClimbTransitionTime;
 	float CurrentTransitionTime;
 
+	bool bClimbingPaused;
+	float ClimbPauseTime;
+	float CurrentClimbPauseTime;
+
 	float CurrentMinHeightToClimb;
 	float CurrentMaxHeightToClimb;
 	
@@ -214,6 +236,9 @@ private:
 
 	float RaiseLegsCapsuleHalfHeight;
 	float RaiseLegsCapsuleRadius;
+
+	float LastNonZeroHorizontal;
+	float PreviousNonZeroHorizontal;
 	
 	FVector DefaultSkeletalMeshLocation;
 
