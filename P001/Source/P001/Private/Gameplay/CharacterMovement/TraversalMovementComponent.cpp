@@ -213,23 +213,22 @@ void UTraversalMovementComponent::TickClimbInput(float DeltaTime)
 				else
 				{
 					// make the player lean
-					bIsLeaning = true;
 					// add pause to the lean var for switching hands
+					bIsLeaning = true;
 
-					if(PreviousNonZeroHorizontal <= 0 && LastNonZeroHorizontal >0)
+					if((PreviousNonZeroHorizontal <= 0 && LastNonZeroHorizontal >0)  
+						|| (PreviousNonZeroHorizontal >= 0 && LastNonZeroHorizontal < 0) )
 					{
 						// switch?	
-						DEBUG_SCREEN_ERROR("Cross", 5);
-					}
-					else if(PreviousNonZeroHorizontal >= 0 && LastNonZeroHorizontal < 0)
-					{
-						// switch?	
+						bIsLeaningPaused = true;
 						DEBUG_SCREEN_ERROR("Cross", 5);
 					}
 
 
 					LeanDirection = FVector(Horizontal, 0.f, Vertical);
 					bAnchorRightHand = LastNonZeroHorizontal < 0;
+
+					SearchForLedge(DeltaTime);
 				}
 			}
 			else
@@ -518,7 +517,7 @@ void UTraversalMovementComponent::StartClimbing()
 		bIsClimbing = true;
 		CurrentClimbTransitionInputTime = 0.f;
 		CharacterOwner->GetRootComponent()->ComponentVelocity = FVector(0.f);
-		bClimbingPause =	false;
+		bClimbingPaused = false;
 		RaiseLegs();
 	}
 }
@@ -654,7 +653,7 @@ void UTraversalMovementComponent::EndClimbTransition()
 
 void UTraversalMovementComponent::PauseClimb(float AmountOfTime)
 {
-	bClimbingPause = true;
+	bClimbingPaused = true;
 	ClimbPauseTime = AmountOfTime;
 	CurrentClimbPauseTime = 0.f;
 }
@@ -792,6 +791,22 @@ UActionPointComponent* UTraversalMovementComponent::FindNextActionPoint(float De
 	}
 
 	return nullptr;
+}
+
+FVector UTraversalMovementComponent::SearchForLedge(float DeltaTime)
+{
+	FVector InputVector = (CharacterOwner->GetActorRightVector() * Horizontal
+		+ CharacterOwner->GetActorUpVector() * Vertical)
+		.GetSafeNormal();
+
+	float DeadZone = 0.5f;
+	if(Vertical > DeadZone && Horizontal <= DeadZone)
+	{
+		DEBUG_SCREEN_ERROR("Ledge???", 1.f);
+		DrawDebugLine(GetWorld(), CharacterOwner->GetActorLocation(), CharacterOwner->GetActorLocation() + InputVector * 100, FColor::Red);
+	}
+
+	return FVector::ZeroVector;
 }
 
 bool UTraversalMovementComponent::CanReachActionPoint(UActionPointComponent* ActionPoint)

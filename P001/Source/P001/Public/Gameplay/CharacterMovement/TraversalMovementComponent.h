@@ -91,6 +91,9 @@ public:
 	bool bIsLeaning;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
+	bool bIsLeaningPaused;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
 	bool bAnchorRightHand;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
@@ -159,6 +162,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	UActionPointComponent* FindNextActionPoint(float DeltaTime);
+
+	UFUNCTION(BlueprintCallable)
+	FVector SearchForLedge(float DeltaTime);
 
 	UFUNCTION(BlueprintPure)
 	bool CanReachActionPoint(UActionPointComponent* ActionPoint);
