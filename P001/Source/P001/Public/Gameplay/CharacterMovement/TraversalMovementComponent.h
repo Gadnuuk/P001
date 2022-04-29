@@ -196,7 +196,7 @@ protected:
 	void TickMatchTarget(float DeltaTime);
 	void SetCurrentActionPoint(UActionPointComponent* NewActionPoint);
 	void TickClimbInput(float DeltaTime);
-	void TickClimbPosition(float DeltaTime);'
+	void TickClimbPosition(float DeltaTime);
 
 	UFUNCTION()
 	void OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, 
