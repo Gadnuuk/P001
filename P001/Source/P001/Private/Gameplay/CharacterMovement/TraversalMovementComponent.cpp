@@ -22,6 +22,36 @@ UTraversalMovementComponent::UTraversalMovementComponent()
 	ClimbTransitionMatchTargetRange = FVector2D(0.24f, 0.46f);
 }
 
+FVector UTraversalMovementComponent::GetClimbInputVector()
+{
+	if(CharacterOwner == nullptr)
+	{
+		return FVector::ZeroVector;
+	}
+
+	return (CharacterOwner->GetActorRightVector() * Horizontal
+		+ CharacterOwner->GetActorUpVector() * Vertical)
+		.GetSafeNormal();
+}
+
+TArray<AActor*> UTraversalMovementComponent::GetClimbActorsToIgnore()
+{
+	if (CharacterOwner == nullptr || CurrentActionPoint == nullptr)
+	{
+		return TArray<AActor*>();
+	}
+
+	TArray<AActor*> ActorsToIgnore;
+	ActorsToIgnore.Add(CharacterOwner);
+	ActorsToIgnore.Add(CurrentActionPoint->GetOwner());
+	for (auto Point : ActionPointsInClimbableSpace)
+	{
+		ActorsToIgnore.AddUnique(Point->GetOwner());
+	}
+
+	return ActorsToIgnore;
+}
+
 void UTraversalMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -670,6 +700,9 @@ void UTraversalMovementComponent::ShowArrow(bool bShow)
 
 FVector UTraversalMovementComponent::GetLocationFromActionPoint(UActionPointComponent* ActionPoint, bool bAnchorRight, float Lerp /*= 1.f*/)
 {
+	// I need to get a normal default offset for an idle position.
+
+
 	FVector PlayerOffsetFromWall = ClimbTransitionSettings.PlayerOffsetFromWall;
 	FVector PlayerOffset = ActionPoint->GetForwardVector() * PlayerOffsetFromWall.X
 		+ ActionPoint->GetRightVector() * PlayerOffsetFromWall.Y
@@ -795,15 +828,76 @@ UActionPointComponent* UTraversalMovementComponent::FindNextActionPoint(float De
 
 FVector UTraversalMovementComponent::SearchForLedge(float DeltaTime)
 {
-	FVector InputVector = (CharacterOwner->GetActorRightVector() * Horizontal
-		+ CharacterOwner->GetActorUpVector() * Vertical)
-		.GetSafeNormal();
+	FVector InputVector = GetClimbInputVector();
 
 	float DeadZone = 0.5f;
 	if(Vertical > DeadZone && Horizontal <= DeadZone)
 	{
-		DEBUG_SCREEN_ERROR("Ledge???", 1.f);
-		DrawDebugLine(GetWorld(), CharacterOwner->GetActorLocation(), CharacterOwner->GetActorLocation() + InputVector * 100, FColor::Red);
+		// capsule cast up, then forward
+		FVector DepthCheckOffset = (CharacterOwner->GetActorForwardVector() * -ClimbTransitionSettings.WallStepDepth);
+		FVector Start = CharacterOwner->GetActorLocation() + DepthCheckOffset;
+		//TODO: Consider up here. Should it be the players up?
+		FVector End = Start + FVector::UpVector * (DefaultCapsuleHalfHeightUnscaled * 2);
+		
+		// Check for standing space above
+		FHitResult HitResultUp;
+		TArray<AActor*> ActorsToIgnore = GetClimbActorsToIgnore();
+		if(!UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
+			Start, End,
+			DefaultCapsuleRadiusUnscaled,
+			DefaultCapsuleHalfHeightUnscaled,
+			ETraceTypeQuery::TraceTypeQuery1,
+			true,
+			ActorsToIgnore,
+			LedgeCheckDrawMode,
+			HitResultUp,
+			true,
+			FLinearColor::Green, FLinearColor::Red, CollisionCheckDrawTime
+		))
+		{
+			// check for standing space forward
+			Start = End;
+			End = Start	+ (CharacterOwner->GetActorForwardVector() * (DefaultCapsuleRadiusUnscaled * 2.5f));
+			FHitResult HitResultForward;
+			if(!UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
+				Start, End,
+				DefaultCapsuleRadiusUnscaled,
+				DefaultCapsuleHalfHeightUnscaled,
+				ETraceTypeQuery::TraceTypeQuery1,
+				true,
+				ActorsToIgnore,
+				LedgeCheckDrawMode,
+				HitResultForward,
+				true,
+				FLinearColor::Green, FLinearColor::Red, CollisionCheckDrawTime
+			))
+			{
+				// find point on ledge
+				// shoot capsule down, offset up by hald height for end point. 
+				// test animation stuff first, IK Retargeting
+				// Can probs match target or some crazy shit like that
+				Start = End;
+				End = Start + FVector::DownVector * (DefaultCapsuleHalfHeightUnscaled * 1);
+				FHitResult HitResultDown;
+
+				if(UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
+					Start, End,
+					DefaultCapsuleRadiusUnscaled,
+					DefaultCapsuleHalfHeightUnscaled,
+					ETraceTypeQuery::TraceTypeQuery1,
+					true,
+					ActorsToIgnore,
+					LedgeCheckDrawMode,
+					HitResultDown,
+					true,
+					FLinearColor::Green, FLinearColor::Red, CollisionCheckDrawTime
+				))
+				{
+					DRAW_SPHERE_BLUE(HitResultDown.ImpactPoint, 20, 0.1f);
+					DRAW_SPHERE_BLUE(GetLocationFromActionPoint(CurrentActionPoint), 20, 0.1f);
+				}
+			}
+		}
 	}
 
 	return FVector::ZeroVector;
@@ -817,12 +911,7 @@ bool UTraversalMovementComponent::CanReachActionPoint(UActionPointComponent* Act
 	FVector End = GetLocationFromActionPoint(ActionPoint, bAnchorRightHand) + DepthCheckOffset;
 
 	FHitResult HitResult;
-	TArray<AActor*> ActorsToIgnore;
-	ActorsToIgnore.Add(CharacterOwner);
-	for (auto Point : ActionPointsInClimbableSpace)
-	{
-		ActorsToIgnore.Add(ActionPoint->GetOwner());
-	}
+	TArray<AActor*> ActorsToIgnore = GetClimbActorsToIgnore();
 
 	return !UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),
 		Start, End,

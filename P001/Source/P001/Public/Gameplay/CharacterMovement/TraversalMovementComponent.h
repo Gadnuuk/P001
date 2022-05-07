@@ -74,6 +74,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
 	TEnumAsByte<EDrawDebugTrace::Type> CollisionCheckDrawMode;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
+	TEnumAsByte<EDrawDebugTrace::Type> LedgeCheckDrawMode;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debugging")
 	float CollisionCheckDrawTime;
@@ -192,9 +195,17 @@ protected:
 	
 	UPROPERTY(BlueprintReadWrite)
 	float Vertical;
+
 	UPROPERTY(BlueprintReadWrite)
 	float PreviousVertical;
 
+	UFUNCTION(BlueprintPure)
+	FVector GetClimbInputVector();
+
+	UFUNCTION(BlueprintPure)
+	TArray<AActor*> GetClimbActorsToIgnore();
+
+protected:
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual FVector ConstrainAnimRootMotionVelocity(const FVector& RootMotionVelocity, const FVector& CurrentVelocity) const override;

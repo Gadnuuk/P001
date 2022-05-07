@@ -31,10 +31,10 @@ DECLARE_LOG_CATEGORY_EXTERN(GameDebugLog, Log, All);
 #define DEBUG_SCREEN_WARNING(x, t, ...) GEngine->AddOnScreenDebugMessage( -1, t, FColor::Yellow, FString("[DEBUG_WARNING] ").Append( FString::Printf( TEXT( x ), ##__VA_ARGS__ ) ) );
 #define DEBUG_SCREEN_ERROR(x, t, ...) GEngine->AddOnScreenDebugMessage( -1, t, FColor::Red, FString("[DEBUG_ERROR] ").Append( FString::Printf( TEXT( x ), ##__VA_ARGS__ ) ) );
 
-#define DRAW_SPHERE_BLUE(Loc, Rad, LifeTime) DrawDebugSphere(GetWorld(), Loc, Rad, 20, FColor::Blue, false, LifeTime, 0, 1);	
-#define DRAW_SPHERE_YELLOW(Loc, Rad, LifeTime) DrawDebugSphere(GetWorld(), Loc, Rad, 20, FColor::Yellow, false, LifeTime, 0, 1);	
-#define DRAW_SPHERE_RED(Loc, Rad, LifeTime) DrawDebugSphere(GetWorld(), Loc, Rad, 20, FColor::Red, false, LifeTime, 0, 1);	
-#define DRAW_SPHERE_GREEN(Loc, Rad, LifeTime) DrawDebugSphere(GetWorld(), Loc, Rad, 20, FColor::Green, false, LifeTime, 0, 1);	
+#define DRAW_SPHERE_BLUE(Loc, Rad, LifeTime) DrawDebugSphere(GetWorld(), Loc, Rad, 12, FColor::Blue, false, LifeTime, 0, 1);	
+#define DRAW_SPHERE_YELLOW(Loc, Rad, LifeTime) DrawDebugSphere(GetWorld(), Loc, Rad, 12, FColor::Yellow, false, LifeTime, 0, 1);	
+#define DRAW_SPHERE_RED(Loc, Rad, LifeTime) DrawDebugSphere(GetWorld(), Loc, Rad, 12, FColor::Red, false, LifeTime, 0, 1);	
+#define DRAW_SPHERE_GREEN(Loc, Rad, LifeTime) DrawDebugSphere(GetWorld(), Loc, Rad, 12, FColor::Green, false, LifeTime, 0, 1);	
 
 #define NEW_OBJECT(T, C) NewObject<T>( (UObject*)GetTransientPackage(), C )
 #define CONSTRUCT_OBJECT(T) NewObject<T>( (UObject*)GetTransientPackage(), T::StaticClass() )
