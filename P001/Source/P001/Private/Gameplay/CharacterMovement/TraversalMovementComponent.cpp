@@ -894,7 +894,7 @@ FVector UTraversalMovementComponent::SearchForLedge(float DeltaTime)
 				))
 				{
 					DRAW_SPHERE_BLUE(HitResultDown.ImpactPoint, 20, 0.1f);
-					DRAW_SPHERE_BLUE(GetLocationFromActionPoint(CurrentActionPoint), 20, 0.1f);
+					//DRAW_SPHERE_BLUE(GetLocationFromActionPoint(CurrentActionPoint), 20, 0.1f);
 				}
 			}
 		}
