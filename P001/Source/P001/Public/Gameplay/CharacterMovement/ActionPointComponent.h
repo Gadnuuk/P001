@@ -19,6 +19,9 @@ class P001_API UActionPointComponent : public USphereComponent
 public:
 	UActionPointComponent();
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite);
+	USceneComponent* OffsetCenterMass;
+
 	UFUNCTION(BlueprintPure)
 	TEnumAsByte<EActionPointType> GetActionPointType() {return ActionPointType;}
 

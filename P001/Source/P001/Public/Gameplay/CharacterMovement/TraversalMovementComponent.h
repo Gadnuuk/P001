@@ -36,6 +36,9 @@ public:
 	FTraverseDelegate OnWallClimbStart;
 	
 	UPROPERTY(BlueprintAssignable)
+	FTraverseDelegate OnClimbingIdleCrossHands;
+
+	UPROPERTY(BlueprintAssignable)
 	FTraverseWallClimbDelegate OnWallClimbStartTransition;
 
 	UPROPERTY(BlueprintAssignable)
@@ -93,7 +96,7 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
 	bool bIsLeaning;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
+	UPROPERTY(BlueprintReadWrite, Category = "Debugging")
 	bool bIsLeaningPaused;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Debugging")
@@ -173,6 +176,7 @@ public:
 	bool CanReachActionPoint(UActionPointComponent* ActionPoint);
 
 protected:
+	
 	UPROPERTY()
 	TArray<FMatchTargetData> MatchTargets;
 

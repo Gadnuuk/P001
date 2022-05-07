@@ -251,7 +251,8 @@ void UTraversalMovementComponent::TickClimbInput(float DeltaTime)
 					{
 						// switch?	
 						bIsLeaningPaused = true;
-						DEBUG_SCREEN_ERROR("Cross", 5);
+						OnClimbingIdleCrossHands.Broadcast();
+						DEBUG_SCREEN_ERROR("Cross from ticked climb check", 5);
 					}
 
 
@@ -651,6 +652,13 @@ void UTraversalMovementComponent::AddClimbHorizontalInput(float NewHorizontal)
 		PreviousNonZeroHorizontal = LastNonZeroHorizontal;
 		LastNonZeroHorizontal = NewHorizontal;
 	}
+
+	// cross check
+	if ((PreviousNonZeroHorizontal <= 0 && LastNonZeroHorizontal > 0)
+		|| (PreviousNonZeroHorizontal >= 0 && LastNonZeroHorizontal < 0))
+	{
+		DEBUG_SCREEN_ERROR("Cross from input", 5);
+	}
 }
 
 void UTraversalMovementComponent::AddClimbVerticalInput(float NewVertical)
@@ -701,7 +709,6 @@ void UTraversalMovementComponent::ShowArrow(bool bShow)
 FVector UTraversalMovementComponent::GetLocationFromActionPoint(UActionPointComponent* ActionPoint, bool bAnchorRight, float Lerp /*= 1.f*/)
 {
 	// I need to get a normal default offset for an idle position.
-
 
 	FVector PlayerOffsetFromWall = ClimbTransitionSettings.PlayerOffsetFromWall;
 	FVector PlayerOffset = ActionPoint->GetForwardVector() * PlayerOffsetFromWall.X
@@ -835,7 +842,7 @@ FVector UTraversalMovementComponent::SearchForLedge(float DeltaTime)
 	{
 		// capsule cast up, then forward
 		FVector DepthCheckOffset = (CharacterOwner->GetActorForwardVector() * -ClimbTransitionSettings.WallStepDepth);
-		FVector Start = CharacterOwner->GetActorLocation() + DepthCheckOffset;
+		FVector Start = CurrentActionPoint->OffsetCenterMass->GetComponentLocation() + DepthCheckOffset;
 		//TODO: Consider up here. Should it be the players up?
 		FVector End = Start + FVector::UpVector * (DefaultCapsuleHalfHeightUnscaled * 2);
 		
@@ -894,7 +901,8 @@ FVector UTraversalMovementComponent::SearchForLedge(float DeltaTime)
 				))
 				{
 					DRAW_SPHERE_BLUE(HitResultDown.ImpactPoint, 20, 0.1f);
-					DRAW_SPHERE_BLUE(GetLocationFromActionPoint(CurrentActionPoint), 20, 0.1f);
+
+					DRAW_SPHERE_BLUE(CurrentActionPoint->OffsetCenterMass->GetComponentLocation(), 20, 0.1f);
 				}
 			}
 		}
